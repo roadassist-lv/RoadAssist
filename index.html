@@ -121,16 +121,17 @@ async function addDriver(){
 async function initDispatcher(){document.getElementById('roleLabel').textContent='Dispečers';document.getElementById('dispatcherTabs').style.display='flex';
 let c=await db.from('clients').select('id,name,payment_type').eq('active',true).order('id');
 if(!c.error&&c.data){document.getElementById('client').innerHTML=c.data.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');document.getElementById('partnerClient').innerHTML=c.data.filter(x=>x.payment_type==='partner').map(x=>`<option value="${x.id}">${x.name}</option>`).join('');}
-let a=await db.from('vehicles').select('id,name,plate').eq('active',true).order('id');document.getElementById('vehicle').innerHTML=(a.data||[]).map(x=>`<option value="${x.id}">${x.name} — ${x.plate}</option>`).join('');
+let a=await db.from('vehicles').select('id,name,plate,phone').eq('active',true).order('id');document.getElementById('vehicle').innerHTML=(a.data||[]).map(x=>`<option value="${x.id}">${x.name} — ${x.plate}</option>`).join('');
+                                document.getElementById('vehicle').onchange=()=>{let x=(a.data||[]).find(v=>v.id==Number(document.getElementById('vehicle').value));document.getElementById('vehiclePhone').textContent=x?.phone?'📞 '+x.phone:''};
 let d=await db.from('drivers').select('id,name').eq('active',true).order('id');document.getElementById('driver').innerHTML='<option value="">Vadītājs nav piešķirts</option>'+(d.data||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');await loadOrders()}
 async function loadDriverPay(){
 let did=Number(v('payDriver')),from=v('payFrom'),to=v('payTo');
 let r=await db.from('orders').select('driver_pay,kilometers,tow_ins,extra_work_amount').eq('driver_id',did).eq('status','completed').gte('completed_at',from+'T00:00:00').lte('completed_at',to+'T23:59:59');
 if(r.error){document.getElementById('payResult').innerHTML='<div class="notice error">'+r.error.message+'</div>';return}
 let a=r.data||[],pay=a.reduce((x,o)=>x+Number(o.driver_pay||0),0),km=a.reduce((x,o)=>x+Number(o.kilometers||0),0),rt=a.reduce((x,o)=>x+Number(o.tow_ins||0),0),ex=a.reduce((x,o)=>x+Number(o.extra_work_amount||0),0);
-document.getElementById('payResult').innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${a.length}</b></div><div class="finance-card">Kilometri<br><b>${km}</b></div><div class="finance-card">Ratiņi<br><b>${rt}</b></div><div class="finance-card">Vadītāja samaksa<br><b>€${pay.toFixed(2)}</b></div></div><p>Izvilkšana: €${ex.toFixed(2)}</p>`}
+document.getElementById('payResult').innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${a.length}</b></div><div class="finance-card">Kiletri<br><b>${km}</b></div><div class="finance-card">Ratiņi<br><b>${rt}</b></div><div class="finance-card">Vadītāja samaksa<br><b>€${pay.toFixed(2)}</b></div></div><p>Izvilkšana: €${ex.toFixed(2)}</p>`}
 async function loadPartnerDebt(){
-let cid=Number(v('partnerClient'));
+let cid=Number(v('partnerClient'));om
 let o=await db.from('orders').select('partner_debt').eq('client_id',cid).eq('status','completed');
 let c=await db.from('partner_collections').select('amount').eq('client_id',cid);
 if(o.error||c.error){document.getElementById('debtResult').innerHTML='<div class="notice error">Pārbaudi partneru tabulu un tiesības.</div>';return}
