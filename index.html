@@ -126,6 +126,7 @@ let a=await db.from('vehicles').select('id,name,plate,phone').eq('active',true).
   let x=(a.data||[]).find(v=>v.id==Number(document.getElementById('vehicle').value));
   document.getElementById('vehiclePhone').textContent=x?.phone?'📞 '+x.phone:'';
 };
+ document.getElementById('vehicle').dispatchEvent(new Event('change'));                               
 document.getElementById('vehiclePhone').innerHTML=x?.phone?`📞 <a href="tel:${x.phone}">${x.phone}</a>`:'';
 let d=await db.from('drivers').select('id,name').eq('active',true).order('id');document.getElementById('driver').innerHTML='<option value="">Vadītājs nav piešķirts</option>'+(d.data||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');await loadOrders()}
 async function loadDriverPay(){
