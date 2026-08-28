@@ -520,12 +520,9 @@ const phone=v('newDriverPhone').trim();
 const uid=v('newDriverUserId').trim();
 
 if(!name||!uid){
-
 document.getElementById('driverMsg').innerHTML=
 '<div class="notice error">Vārds un Lietotāja ID ir obligāti.</div>';
-
 return;
-
 }
 
 const r=await db
@@ -538,12 +535,9 @@ active:true
 });
 
 if(r.error){
-
 document.getElementById('driverMsg').innerHTML=
 '<div class="notice error">'+r.error.message+'</div>';
-
 return;
-
 }
 
 document.getElementById('driverMsg').innerHTML=
@@ -622,11 +616,8 @@ vehicle.onchange=async()=>{
 const id=Number(vehicle.value);
 
 if(!id){
-
 document.getElementById('vehiclePhone').textContent='';
-
 return;
-
 }
 
 const r=await db
@@ -685,7 +676,6 @@ document.getElementById('payResult').innerHTML=
 '<div class="notice error">'+r.error.message+'</div>';
 
 return;
-
 }
 
 let a=r.data||[];
@@ -732,12 +722,9 @@ async function loadPartnerDebt(){
 let cid=Number(v('partnerClient'));
 
 if(!cid){
-
 document.getElementById('debtResult').innerHTML=
 '<div class="notice error">Izvēlies partneri.</div>';
-
 return;
-
 }
 
 let o=await db
@@ -757,7 +744,6 @@ document.getElementById('debtResult').innerHTML=
 '<div class="notice error">Pārbaudi partneru tabulu un tiesības.</div>';
 
 return;
-
 }
 
 let debt=
@@ -774,7 +760,6 @@ document.getElementById('debtResult').innerHTML=`
 Partnera parāds:
 €${Math.max(0,debt).toFixed(2)}
 </h3>
-
 <p>
 Inkasācija tiks pievienota nākamajā solī pēc šī aprēķina pārbaudes.
 </p>
@@ -795,7 +780,6 @@ let d=await db
 if(d.error){
 
 alert('Vadītājs nav atrasts');
-
 return;
 
 }
@@ -830,7 +814,6 @@ let extra=Number(v('extraAmount')||0);
 if(!clientId){
 
 msg('Izvēlies klientu.',true);
-
 return;
 
 }
@@ -875,7 +858,6 @@ let partnerDebt=Math.max(0,cash-our);
 
 /* ПОЛУЧАЕМ НАЗВАНИЕ КЛИЕНТА */
 const clientSelect=document.getElementById('client');
-
 const clientName=
 clientSelect.options[clientSelect.selectedIndex]?.text||'';
 
@@ -1063,63 +1045,21 @@ o.drivers.name:
 <td>€${o.price||0}</td>
 
 <td>
-
-<select
-id="assignDriver_${o.id}"
-style="min-width:150px;padding:7px;border:1px solid #ccd5db;border-radius:7px"
->
-
-<option value="">
-Vadītājs nav piešķirts
-</option>
-
-${dispatcherDrivers.map(d=>`
-<option
-value="${d.id}"
-${o.drivers&&o.drivers.id===d.id?'selected':''}
->
-${d.name}
-</option>
-`).join('')}
-
+<select id="assignDriver_${o.id}" style="min-width:150px;padding:7px;border:1px solid #ccd5db;border-radius:7px">
+<option value="">Vadītājs nav piešķirts</option>
+${dispatcherDrivers.map(d=>`<option value="${d.id}" ${o.drivers&&o.drivers.id===d.id?'selected':''}>${d.name}</option>`).join('')}
 </select>
-
-<select
-id="assignVehicle_${o.id}"
-style="min-width:180px;padding:7px;border:1px solid #ccd5db;border-radius:7px;margin-top:5px"
->
-
-<option value="">
-Evakuators nav piešķirts
-</option>
-
-${dispatcherVehicles.map(v=>`
-<option
-value="${v.id}"
-${o.vehicles&&o.vehicles.id===v.id?'selected':''}
->
-${v.name} — ${v.plate}
-</option>
-`).join('')}
-
+<select id="assignVehicle_${o.id}" style="min-width:180px;padding:7px;border:1px solid #ccd5db;border-radius:7px;margin-top:5px">
+<option value="">Evakuators nav piešķirts</option>
+${dispatcherVehicles.map(v=>`<option value="${v.id}" ${o.vehicles&&o.vehicles.id===v.id?'selected':''}>${v.name} — ${v.plate}</option>`).join('')}
 </select>
-
-<button
-class="green"
-style="margin-top:5px"
-onclick="assignOrder(${o.id})"
->
-PIEVIENOT
-</button>
-
+<button class="green" style="margin-top:5px" onclick="assignOrder(${o.id})">PIEVIENOT</button>
 </td>
 
 <td>
-
 <span class="status status-${o.status}">
 ${statusLv(o.status)}
 </span>
-
 </td>
 
 </tr>
@@ -1132,54 +1072,59 @@ ${statusLv(o.status)}
 /* НАЗНАЧИТЬ ВОДИТЕЛЯ И ЭВАКУАТОР НА СУЩЕСТВУЮЩИЙ ЗАКАЗ */
 async function assignOrder(id){
 
-const driverValue=
-document.getElementById('assignDriver_'+id).value;
+const driverEl=document.getElementById('assignDriver_'+id);
+const vehicleEl=document.getElementById('assignVehicle_'+id);
 
-const vehicleValue=
-document.getElementById('assignVehicle_'+id).value;
+if(!driverEl || !vehicleEl){
+alert('Neizdevās atrast vadītāja vai evakuatora izvēlni pasūtījumam Nr. '+id+'.');
+return;
+}
 
+const driverValue=driverEl.value;
+const vehicleValue=vehicleEl.value;
+
+if(!driverValue){
+alert('Izvēlies vadītāju.');
+return;
+}
+
+if(!vehicleValue){
+alert('Izvēlies evakuatoru.');
+return;
+}
 
 const updateData={
-
-driver_id:
-driverValue?
-Number(driverValue):
-null,
-
-vehicle_id:
-vehicleValue?
-Number(vehicleValue):
-null
-
+driver_id:Number(driverValue),
+vehicle_id:Number(vehicleValue)
 };
-
 
 const r=await db
 .from('orders')
 .update(updateData)
-.eq('id',id);
-
+.eq('id',id)
+.select('id,driver_id,vehicle_id')
+.single();
 
 if(r.error){
-
-alert(
-'Neizdevās piešķirt vadītāju/evakuatoru: '+
-r.error.message
-);
-
+alert('Neizdevās piešķirt vadītāju/evakuatoru: '+r.error.message);
 return;
-
 }
 
+if(!r.data || Number(r.data.driver_id)!==Number(driverValue)){
+alert('UPDATE tika izpildīts, bet vadītāja ID netika saglabāts. Pārbaudi RLS politikas tabulai orders.');
+return;
+}
 
-msg(
-'Pasūtījumam Nr. '+
-id+
-' piešķirts vadītājs un evakuators.'
-);
+if(Number(r.data.vehicle_id)!==Number(vehicleValue)){
+alert('Vadītājs saglabāts, bet evakuatora ID netika saglabāts. Pārbaudi RLS politikas tabulai orders.');
+return;
+}
+
+document.getElementById('msg').innerHTML=
+'<div class="notice">Pasūtījumam Nr. '+id+
+' piešķirts vadītājs un evakuators.</div>';
 
 await loadOrders();
-
 }
 
 
@@ -1204,6 +1149,16 @@ status
 .eq('driver_id',driverId)
 .order('id',{ascending:false});
 
+if(r.error){
+document.getElementById('driverHead').innerHTML=
+'<div class="muted">Vadītāja kabinets</div>'+
+'<h2>Mani pasūtījumi</h2>'+
+'<div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';
+document.getElementById('driverOrders').innerHTML='';
+return;
+}
+
+
 
 document.getElementById('driverHead').innerHTML=
 '<div class="muted">Vadītāja kabinets</div>'+
@@ -1217,13 +1172,10 @@ document.getElementById('driverOrders').innerHTML=
 <div class="panel">
 
 <div class="muted">
-
 Pasūtījums Nr. ${o.id} ·
-
 <span class="status status-${o.status}">
 ${statusLv(o.status)}
 </span>
-
 </div>
 
 <h2>${o.car}</h2>
@@ -1258,43 +1210,31 @@ PIEŅEMT PASŪTĪJUMU
 ${
 o.status==='in_progress'?
 `
-
 <label class="field">
-
 Kilometri
-
 <input
 id="km_${o.id}"
 type="number"
 value="0"
 >
-
 </label>
 
-
 <label class="field">
-
 Ratiņu skaits
-
 <input
 id="rt_${o.id}"
 type="number"
 value="0"
 >
-
 </label>
-
 
 <button
 class="green"
 style="width:100%;margin-top:12px"
 onclick="finish(${o.id})"
 >
-
 PABEIGT PASŪTĪJUMU
-
 </button>
-
 `
 :''
 }
@@ -1302,7 +1242,6 @@ PABEIGT PASŪTĪJUMU
 </div>
 
 `).join('')||
-
 '<div class="panel">Aktīvu pasūtījumu nav.</div>';
 
 }
@@ -1314,11 +1253,8 @@ async function accept(id){
 let r=await db
 .from('orders')
 .update({
-
 status:'in_progress',
-
 accepted_at:new Date().toISOString()
-
 })
 .eq('id',id)
 .eq('driver_id',driverId);
@@ -1352,15 +1288,9 @@ document.getElementById('rt_'+id).value||0
 
 let h=new Date().getHours();
 
-let base=
-(h>=8&&h<20)?
-10:
-15;
+let base=(h>=8&&h<20)?10:15;
 
-let rate=
-(h>=8&&h<20)?
-.10:
-.15;
+let rate=(h>=8&&h<20)?.10:.15;
 
 let pay=
 base+
