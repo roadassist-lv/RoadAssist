@@ -211,6 +211,7 @@ SAGLABĀT UN NOSŪTĪT VADĪTĀJAM
 <div class="panel">
 <h2>Pasūtījumi</h2>
 <button onclick="loadOrders()">ATJAUNINĀT</button>
+<div id="ordersMsg" style="margin-top:10px"></div>
 
 <div style="overflow:auto;margin-top:12px">
 <table>
@@ -1047,11 +1048,11 @@ o.drivers.name:
 <td>
 <select id="assignDriver_${o.id}" style="min-width:150px;padding:7px;border:1px solid #ccd5db;border-radius:7px">
 <option value="">Vadītājs nav piešķirts</option>
-${dispatcherDrivers.map(d=>`<option value="${d.id}" ${o.drivers&&o.drivers.id===d.id?'selected':''}>${d.name}</option>`).join('')}
+${dispatcherDrivers.map(d=>`<option value="${d.id}" ${o.drivers&&Number(o.drivers.id)===Number(d.id)?'selected':''}>${d.name}</option>`).join('')}
 </select>
 <select id="assignVehicle_${o.id}" style="min-width:180px;padding:7px;border:1px solid #ccd5db;border-radius:7px;margin-top:5px">
 <option value="">Evakuators nav piešķirts</option>
-${dispatcherVehicles.map(v=>`<option value="${v.id}" ${o.vehicles&&o.vehicles.id===v.id?'selected':''}>${v.name} — ${v.plate}</option>`).join('')}
+${dispatcherVehicles.map(v=>`<option value="${v.id}" ${o.vehicles&&Number(o.vehicles.id)===Number(v.id)?'selected':''}>${v.name} — ${v.plate}</option>`).join('')}
 </select>
 <button class="green" style="margin-top:5px" onclick="assignOrder(${o.id})">PIEVIENOT</button>
 </td>
@@ -1072,11 +1073,14 @@ ${statusLv(o.status)}
 /* НАЗНАЧИТЬ ВОДИТЕЛЯ И ЭВАКУАТОР НА СУЩЕСТВУЮЩИЙ ЗАКАЗ */
 async function assignOrder(id){
 
+try{
+
 const driverEl=document.getElementById('assignDriver_'+id);
 const vehicleEl=document.getElementById('assignVehicle_'+id);
+const out=document.getElementById('ordersMsg');
 
 if(!driverEl || !vehicleEl){
-alert('Neizdevās atrast vadītāja vai evakuatora izvēlni pasūtījumam Nr. '+id+'.');
+if(out) out.innerHTML='<div class="notice error">Neizdevās atrast izvēlnes pasūtījumam Nr. '+id+'.</div>';
 return;
 }
 
@@ -1084,55 +1088,85 @@ const driverValue=driverEl.value;
 const vehicleValue=vehicleEl.value;
 
 if(!driverValue){
-alert('Izvēlies vadītāju.');
+if(out) out.innerHTML='<div class="notice error">Vispirms izvēlies vadītāju.</div>';
 return;
 }
 
 if(!vehicleValue){
-alert('Izvēlies evakuatoru.');
+if(out) out.innerHTML='<div class="notice error">Vispirms izvēlies evakuatoru.</div>';
 return;
 }
 
-const updateData={
-driver_id:Number(driverValue),
-vehicle_id:Number(vehicleValue)
-};
+if(out) out.innerHTML='<div class="notice">Saglabāju pasūtījumu Nr. '+id+'...</div>';
 
 const r=await db
 .from('orders')
-.update(updateData)
-.eq('id',id)
-.select('id,driver_id,vehicle_id');
+.update({
+driver_id:Number(driverValue),
+vehicle_id:Number(vehicleValue)
+})
+.eq('id',id);
 
 if(r.error){
-alert('Neizdevās piešķirt vadītāju/evakuatoru: '+r.error.message);
+if(out) out.innerHTML='<div class="notice error">Neizdevās saglabāt: '+r.error.message+'</div>';
 return;
 }
 
-const rows=r.data || [];
+/* PĀRBAUDĀM, VAI ID TIEŠĀM SAGLABĀTI */
+const check=await db
+.from('orders')
+.select('id,driver_id,vehicle_id')
+.eq('id',id)
+.maybeSingle();
 
-if(rows.length===0){
-document.getElementById('msg').innerHTML=
-'<div class="notice error">Pasūtījums Nr. '+id+
-' tika apstrādāts, bet Supabase neatdeva atjaunināto rindu. Pārbaudi RLS politikas tabulai orders.</div>';
+if(check.error){
+if(out) out.innerHTML=
+'<div class="notice error">Saglabāšana notika, bet pārbaude neizdevās: '+
+check.error.message+'</div>';
 await loadOrders();
 return;
 }
 
-const saved=rows[0];
-
-if(Number(saved.driver_id)!==Number(driverValue) ||
-   Number(saved.vehicle_id)!==Number(vehicleValue)){
-alert('Pasūtījums Nr. '+id+' tika atjaunināts, bet saglabātie vadītāja/evakuatora ID neatbilst izvēlei.');
+if(!check.data){
+if(out) out.innerHTML=
+'<div class="notice error">Pasūtījums Nr. '+id+' netika atrasts pēc saglabāšanas.</div>';
+await loadOrders();
 return;
 }
 
-document.getElementById('msg').innerHTML=
+if(Number(check.data.driver_id)!==Number(driverValue) ||
+   Number(check.data.vehicle_id)!==Number(vehicleValue)){
+
+if(out) out.innerHTML=
+'<div class="notice error">Pasūtījums Nr. '+id+
+' tika apstrādāts, bet vadītājs/evakuators netika ierakstīts. Pārbaudi RLS politiku tabulai orders.</div>';
+
+await loadOrders();
+return;
+}
+
+if(out) out.innerHTML=
 '<div class="notice">Pasūtījumam Nr. '+id+
 ' piešķirts vadītājs un evakuators.</div>';
 
 await loadOrders();
+
+}catch(e){
+
+const out=document.getElementById('ordersMsg');
+
+if(out){
+out.innerHTML=
+'<div class="notice error">Kļūda: '+(e.message||e)+'</div>';
+}else{
+alert('Kļūda: '+(e.message||e));
 }
+
+}
+
+}
+
+window.assignOrder=assignOrder;
 
 
 /* ЗАКАЗЫ ВОДИТЕЛЯ */
