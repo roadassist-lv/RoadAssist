@@ -797,6 +797,24 @@ driverId=d.data.id;
 
 document.getElementById('roleLabel').textContent='Vadītājs';
 
+/* PUSH: reģistrējam Service Worker un parādam atļaujas pogu */
+if('serviceWorker' in navigator){
+  try{
+    await navigator.serviceWorker.register('./sw.js');
+  }catch(e){
+    console.warn('Service Worker:',e);
+  }
+}
+
+const pushBox=document.getElementById('driverHead');
+if(pushBox && 'Notification' in window){
+  const current=Notification.permission;
+  const label=current==='granted'?'🔔 Paziņojumi ir atļauti':
+    current==='denied'?'🔕 Paziņojumi ir bloķēti pārlūkā':'🔔 IESLĒGT PAZIŅOJUMUS';
+  const disabled=current==='denied'?' disabled':'';
+  pushBox.innerHTML += `<button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()"${disabled}>${label}</button>`;
+}
+
 document.getElementById('dispatcherTabs').style.display='none';
 
 document.getElementById('new').classList.remove('active');
@@ -1176,6 +1194,39 @@ alert('Kļūda: '+(e.message||e));
 
 window.assignOrder=assignOrder;
 
+
+/* PUSH: pirmais posms — atļauja un Service Worker */
+async function enablePushNotifications(){
+  const out=document.getElementById('driverHead');
+  if(!('Notification' in window)){
+    if(out) out.innerHTML += '<div class="notice error">Šis pārlūks neatbalsta paziņojumus.</div>';
+    return;
+  }
+
+  if(!('serviceWorker' in navigator)){
+    if(out) out.innerHTML += '<div class="notice error">Šis pārlūks neatbalsta Service Worker.</div>';
+    return;
+  }
+
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted'){
+      if(out) out.innerHTML += '<div class="notice error">Paziņojumu atļauja netika dota. Atļauj paziņojumus pārlūka iestatījumos.</div>';
+      return;
+    }
+
+    const registration=await navigator.serviceWorker.ready;
+    registration.showNotification('Towing Sistēma',{
+      body:'Paziņojumi ir ieslēgti. Drīzumā šeit saņemsi jaunus pasūtījumus.',
+      tag:'towing-test',
+      data:{url:location.href}
+    });
+
+    if(out) out.innerHTML += '<div class="notice">🔔 Paziņojumi ieslēgti. Testa paziņojums nosūtīts.</div>';
+  }catch(e){
+    if(out) out.innerHTML += '<div class="notice error">Neizdevās ieslēgt paziņojumus: '+(e.message||e)+'</div>';
+  }
+}
 
 /* ЗАКАЗЫ ВОДИТЕЛЯ */
 async function loadDriverOrders(){
