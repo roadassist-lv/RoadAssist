@@ -1,157 +1,1256 @@
 <!doctype html>
-<html lang="lv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Towing Sistēma</title><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<html lang="lv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Towing Sistēma</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f5f7;color:#17212b}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f3f5f7;color:#17212b}
 header{background:#17212b;color:#fff;padding:15px 20px;display:flex;justify-content:space-between}
-main{max-width:1100px;margin:auto;padding:18px}.panel{background:#fff;border:1px solid #dfe4e8;border-radius:12px;padding:18px;margin-bottom:15px}
-button,input,select,textarea{font:inherit}button{padding:11px 15px;border:0;border-radius:8px;font-weight:700;cursor:pointer}
-.primary{background:#17212b;color:#fff}.green{background:#198754;color:#fff}.danger{background:#b42318;color:#fff}
-.form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.full{grid-column:1/-1}.field{display:flex;flex-direction:column;gap:5px}
+main{max-width:1100px;margin:auto;padding:18px}
+.panel{background:#fff;border:1px solid #dfe4e8;border-radius:12px;padding:18px;margin-bottom:15px}
+button,input,select,textarea{font:inherit}
+button{padding:11px 15px;border:0;border-radius:8px;font-weight:700;cursor:pointer}
+.primary{background:#17212b;color:#fff}
+.green{background:#198754;color:#fff}
+.danger{background:#b42318;color:#fff}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+.field{display:flex;flex-direction:column;gap:5px}
 .field input,.field select,.field textarea{padding:10px;border:1px solid #ccd5db;border-radius:7px}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}.tab{background:#fff;border:1px solid #ccd5db}.tab.active{background:#17212b;color:#fff}
-.screen{display:none}.screen.active{display:block}.notice{padding:10px;border-radius:8px;background:#eef6ff;margin-bottom:12px;font-size:13px}
-.error{background:#ffe8e8;color:#8b1e1e}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #edf0f2;text-align:left;font-size:13px}
-.status{display:inline-block;padding:5px 9px;border-radius:999px;font-weight:700;font-size:12px}.status-new{background:#d9f7df;color:#126b2d}.status-in_progress{background:#fff1c7;color:#765400}.status-completed{background:#e7e9ec;color:#4c5963}
-.hide{display:none}.row{padding:14px 0;border-top:1px solid #edf0f2}.muted{color:#71808b;font-size:13px}
-@media(max-width:700px){.form{grid-template-columns:1fr}.full{grid-column:auto}main{padding:12px}}
-.finance-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.finance-card{border:1px solid #dfe4e8;border-radius:10px;padding:14px;background:#fff}.finance-card b{font-size:22px}
-@media(max-width:700px){.finance-grid{grid-template-columns:1fr 1fr}}
-</style></head>
-<body><header><b>TOWING SISTĒMA</b><span id="roleLabel">Pieslēgšanās</span></header>
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}
+.tab{background:#fff;border:1px solid #ccd5db}
+.tab.active{background:#17212b;color:#fff}
+.screen{display:none}
+.screen.active{display:block}
+.notice{padding:10px;border-radius:8px;background:#eef6ff;margin-bottom:12px;font-size:13px}
+.error{background:#ffe8e8;color:#8b1e1e}
+table{width:100%;border-collapse:collapse}
+th,td{padding:9px;border-bottom:1px solid #edf0f2;text-align:left;font-size:13px}
+.status{display:inline-block;padding:5px 9px;border-radius:999px;font-weight:700;font-size:12px}
+.status-new{background:#d9f7df;color:#126b2d}
+.status-in_progress{background:#fff1c7;color:#765400}
+.status-completed{background:#e7e9ec;color:#4c5963}
+.hide{display:none}
+.row{padding:14px 0;border-top:1px solid #edf0f2}
+.muted{color:#71808b;font-size:13px}
+@media(max-width:700px){
+.form{grid-template-columns:1fr}
+.full{grid-column:auto}
+main{padding:12px}
+}
+.finance-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.finance-card{border:1px solid #dfe4e8;border-radius:10px;padding:14px;background:#fff}
+.finance-card b{font-size:22px}
+@media(max-width:700px){
+.finance-grid{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<b>TOWING SISTĒMA</b>
+<span id="roleLabel">Pieslēgšanās</span>
+</header>
+
 <main>
-<section id="login" class="panel"><h2>Pieslēgties</h2><div id="loginMsg"></div>
-<label class="field">E-pasts<input id="email" value="test-driver@towing.local"></label>
-<label class="field">Parole<input id="password" type="password"></label>
-<button class="primary" style="width:100%;margin-top:12px" onclick="login()">PIESLĒGTIES</button>
+
+<section id="login" class="panel">
+<h2>Pieslēgties</h2>
+<div id="loginMsg"></div>
+
+<label class="field">
+E-pasts
+<input id="email" value="test-driver@towing.local">
+</label>
+
+<label class="field">
+Parole
+<input id="password" type="password">
+</label>
+
+<button class="primary" style="width:100%;margin-top:12px" onclick="login()">
+PIESLĒGTIES
+</button>
 </section>
 
+
 <section id="app" class="hide">
+
 <div class="tabs" id="dispatcherTabs">
 <button class="tab active" onclick="show('new',this)">Jauns pasūtījums</button>
 <button class="tab" onclick="show('orders',this)">Pasūtījumi</button>
 <button class="tab" onclick="show('finance',this)">Vadītāju samaksa</button>
 <button class="tab" onclick="show('settlements',this)">Norēķini</button>
-<button class="tab" onclick="show('drivers',this)">Vadītāji</button> 
+<button class="tab" onclick="show('drivers',this)">Vadītāji</button>
 </div>
 
-<section id="new" class="screen active"><div class="panel"><h2>Jauns pasūtījums</h2><div id="msg"></div>
-<div class="form">
-<label class="field">Klients<select id="client"><option>Privātais</option><option>Compensa</option><option>Gjensidige</option><option>Balcia</option><option>Cita apdrošināšana</option><option>Partneris</option><option>Serviss</option></select></label>
-<label class="field">Tālrunis<input id="phone"></label><label class="field">Automašīna<input id="car"></label><label class="field">Valsts numurs<input id="plate"></label>
-<label class="field full">Kas noticis?<textarea id="problem"></textarea></label>
-<label class="field">Vai riteņi griežas?<select id="wheels"><option>Jā</option><option>Nē</option></select></label>
-<label class="field">Vai var ieslēgt neitrālo?<select id="neutral"><option>Jā</option><option>Nē</option></select></label>
-<label class="field">Vai stūre griežas?<select id="steering"><option>Jā</option><option>Nē</option></select></label>
-<label class="field">Atrašanās vieta<input id="from"></label><label class="field">Nogādāt uz<input id="to"></label>
-<label class="field">Cena klientam, €<input id="price" type="number" step="0.01"></label>
-<label class="field">Klienta samaksāts, €<input id="cashReceived" type="number" step="0.01"></label>
-<label class="field">Mūsu daļa, €<input id="ourShare" type="number" step="0.01"></label>
-<label class="field">Papildu darbs<select id="extraWork"><option value="">Nav</option><option value="Izvilkšana">Izvilkšana</option></select></label>
-<label class="field">Izvilkšanas samaksa, €<input id="extraAmount" type="number" min="0" max="50" step="5" placeholder="15–50"></label>
-<label class="field">Evakuatora automašīna<select id="vehicle"></select></label>
-<div id="vehiclePhone" class="notice"></div>
-<label class="field">Vadītājs<select id="driver"></select></label>
-</div><button class="green" style="margin-top:15px" onclick="createOrder()">SAGLABĀT UN NOSŪTĪT VADĪTĀJAM</button></div></section>
 
-<section id="orders" class="screen"><div class="panel"><h2>Pasūtījumi</h2><button onclick="loadOrders()">ATJAUNINĀT</button><div style="overflow:auto;margin-top:12px"><table><thead><tr><th>Nr.</th><th>Klients</th><th>Automašīna</th><th>No</th><th>Uz</th><th>Evakuators</th><th>Vadītājs</th><th>Cena</th><th>Statuss</th></tr></thead><tbody id="rows"></tbody></table></div></div></section>
+<section id="new" class="screen active">
+<div class="panel">
+<h2>Jauns pasūtījums</h2>
+<div id="msg"></div>
+
+<div class="form">
+
+<label class="field">
+Klients
+<select id="client"></select>
+</label>
+
+<label class="field">
+Tālrunis
+<input id="phone">
+</label>
+
+<label class="field">
+Automašīna
+<input id="car">
+</label>
+
+<label class="field">
+Valsts numurs
+<input id="plate">
+</label>
+
+<label class="field full">
+Kas noticis?
+<textarea id="problem"></textarea>
+</label>
+
+<label class="field">
+Vai riteņi griežas?
+<select id="wheels">
+<option>Jā</option>
+<option>Nē</option>
+</select>
+</label>
+
+<label class="field">
+Vai var ieslēgt neitrālo?
+<select id="neutral">
+<option>Jā</option>
+<option>Nē</option>
+</select>
+</label>
+
+<label class="field">
+Vai stūre griežas?
+<select id="steering">
+<option>Jā</option>
+<option>Nē</option>
+</select>
+</label>
+
+<label class="field">
+Atrašanās vieta
+<input id="from">
+</label>
+
+<label class="field">
+Nogādāt uz
+<input id="to">
+</label>
+
+<label class="field">
+Cena klientam, €
+<input id="price" type="number" step="0.01">
+</label>
+
+<label class="field">
+Klienta samaksāts, €
+<input id="cashReceived" type="number" step="0.01">
+</label>
+
+<label class="field">
+Mūsu daļa, €
+<input id="ourShare" type="number" step="0.01">
+</label>
+
+<label class="field">
+Papildu darbs
+<select id="extraWork">
+<option value="">Nav</option>
+<option value="Izvilkšana">Izvilkšana</option>
+</select>
+</label>
+
+<label class="field">
+Izvilkšanas samaksa, €
+<input id="extraAmount" type="number" min="0" max="50" step="5" placeholder="15–50">
+</label>
+
+<label class="field">
+Evakuatora automašīna
+<select id="vehicle"></select>
+</label>
+
+<div id="vehiclePhone" class="notice"></div>
+
+<label class="field">
+Vadītājs
+<select id="driver"></select>
+</label>
+
+</div>
+
+<button class="green" style="margin-top:15px" onclick="createOrder()">
+SAGLABĀT UN NOSŪTĪT VADĪTĀJAM
+</button>
+
+</div>
+</section>
+
+
+<section id="orders" class="screen">
+<div class="panel">
+<h2>Pasūtījumi</h2>
+<button onclick="loadOrders()">ATJAUNINĀT</button>
+
+<div style="overflow:auto;margin-top:12px">
+<table>
+<thead>
+<tr>
+<th>Nr.</th>
+<th>Klients</th>
+<th>Automašīna</th>
+<th>No</th>
+<th>Uz</th>
+<th>Evakuators</th>
+<th>Vadītājs</th>
+<th>Cena</th>
+<th>Statuss</th>
+</tr>
+</thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+
+</div>
+</section>
+
 
 <section id="finance" class="screen">
-<div class="panel"><h2>Vadītāju samaksa</h2>
+
+<div class="panel">
+<h2>Vadītāju samaksa</h2>
+
 <div class="form">
-<label class="field">Vadītājs<select id="payDriver"></select></label>
-<label class="field">No<input id="payFrom" type="date"></label>
-<label class="field">Līdz<input id="payTo" type="date"></label>
+
+<label class="field">
+Vadītājs
+<select id="payDriver"></select>
+</label>
+
+<label class="field">
+No
+<input id="payFrom" type="date">
+</label>
+
+<label class="field">
+Līdz
+<input id="payTo" type="date">
+</label>
+
 </div>
-<button class="btn green" style="margin-top:12px" onclick="loadDriverPay()">APRĒĶINĀT</button>
-<div id="payResult" style="margin-top:15px"></div></div></section>
+
+<button class="btn green" style="margin-top:12px" onclick="loadDriverPay()">
+APRĒĶINĀT
+</button>
+
+<div id="payResult" style="margin-top:15px"></div>
+</div>
+
+</section>
+
 
 <section id="settlements" class="screen">
-<div class="panel"><h2>Norēķini</h2>
-<label class="field">Partneris<select id="partnerClient"></select></label>
-<button class="btn green" style="margin-top:12px" onclick="loadPartnerDebt()">PARĀDĪT PARĀDU</button>
-<div id="debtResult" style="margin-top:15px"></div></div>
-</section>
-<section id="drivers" class="screen">
-<div class="panel"><h2>Vadītāji</h2>
-<div class="form">
-<label class="field">Vārds, uzvārds<input id="newDriverName"></label>
-<label class="field">Tālrunis<input id="newDriverPhone"></label>
-<label class="field">Lietotāja ID<input id="newDriverUserId" placeholder="UUID no Authentication → Users"></label>
+
+<div class="panel">
+<h2>Norēķini</h2>
+
+<label class="field">
+Partneris
+<select id="partnerClient"></select>
+</label>
+
+<button class="btn green" style="margin-top:12px" onclick="loadPartnerDebt()">
+PARĀDĪT PARĀDU
+</button>
+
+<div id="debtResult" style="margin-top:15px"></div>
+
 </div>
-<button class="btn green" style="margin-top:12px" onclick="addDriver()">PIEVIENOT VADĪTĀJU</button>
-<div id="driverMsg" style="margin-top:10px"></div>
-<div style="overflow:auto;margin-top:15px"><table><thead><tr><th>Vārds</th><th>Tālrunis</th><th>User ID</th><th>Statuss</th></tr></thead><tbody id="driverRows"></tbody></table></div>
-</div></section>
-<section id="driverView" class="screen"><div id="driverHead" class="panel"></div><div id="driverOrders"></div></section>
 </section>
+
+
+<section id="drivers" class="screen">
+
+<div class="panel">
+<h2>Vadītāji</h2>
+
+<div class="form">
+
+<label class="field">
+Vārds, uzvārds
+<input id="newDriverName">
+</label>
+
+<label class="field">
+Tālrunis
+<input id="newDriverPhone">
+</label>
+
+<label class="field">
+Lietotāja ID
+<input id="newDriverUserId" placeholder="UUID no Authentication → Users">
+</label>
+
+</div>
+
+<button class="btn green" style="margin-top:12px" onclick="addDriver()">
+PIEVIENOT VADĪTĀJU
+</button>
+
+<div id="driverMsg" style="margin-top:10px"></div>
+
+<div style="overflow:auto;margin-top:15px">
+<table>
+<thead>
+<tr>
+<th>Vārds</th>
+<th>Tālrunis</th>
+<th>User ID</th>
+<th>Statuss</th>
+</tr>
+</thead>
+<tbody id="driverRows"></tbody>
+</table>
+</div>
+
+</div>
+</section>
+
+
+<section id="driverView" class="screen">
+<div id="driverHead" class="panel"></div>
+<div id="driverOrders"></div>
+</section>
+
+</section>
+
 <script>
-const db=window.supabase.createClient("https://uwkpkcdqgjptfnkumwkt.supabase.co","sb_publishable_Eoz8wqvYgLo5TaRc9aFnBQ_v6wKbyi0");let user=null,driverId=null;
-function statusLv(s){return s==='new'?'Jauns':s==='in_progress'?'Izpildē':s==='completed'?'Pabeigts':s}
-function show(id,b){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');if(id==='orders')loadOrders();if(id==='drivers')loadDrivers();}
-function v(id){return document.getElementById(id).value}
-function msg(t,e=false){document.getElementById('msg').innerHTML=t?`<div class="notice ${e?'error':''}">${t}</div>`:''}
+
+const db=window.supabase.createClient(
+"https://uwkpkcdqgjptfnkumwkt.supabase.co",
+"sb_publishable_Eoz8wqvYgLo5TaRc9aFnBQ_v6wKbyi0"
+);
+
+let user=null;
+let driverId=null;
+
+
+function statusLv(s){
+return s==='new'?'Jauns':
+s==='in_progress'?'Izpildē':
+s==='completed'?'Pabeigts':s;
+}
+
+
+function show(id,b){
+document.querySelectorAll('.screen')
+.forEach(x=>x.classList.remove('active'));
+
+document.getElementById(id).classList.add('active');
+
+document.querySelectorAll('.tab')
+.forEach(x=>x.classList.remove('active'));
+
+if(b)b.classList.add('active');
+
+if(id==='orders')loadOrders();
+if(id==='drivers')loadDrivers();
+}
+
+
+function v(id){
+return document.getElementById(id).value;
+}
+
+
+function msg(t,e=false){
+document.getElementById('msg').innerHTML=
+t?`<div class="notice ${e?'error':''}">${t}</div>`:'';
+}
+
+
+/* ВХОД */
 async function login(){
- let r=await db.auth.signInWithPassword({email:v('email'),password:v('password')});if(r.error){document.getElementById('loginMsg').innerHTML='<div class="notice error">'+r.error.message+'</div>';return}
- user=r.data.user;let p=await db.from('profiles').select('role').eq('id',user.id).single();
- document.getElementById('login').classList.add('hide');document.getElementById('app').classList.remove('hide');
- if(!p.error&&p.data.role==='dispatcher') await initDispatcher(); else await initDriver();
+
+const r=await db.auth.signInWithPassword({
+email:v('email'),
+password:v('password')
+});
+
+if(r.error){
+document.getElementById('loginMsg').innerHTML=
+'<div class="notice error">'+r.error.message+'</div>';
+return;
 }
+
+user=r.data.user;
+
+await openUserSession();
+
+}
+
+
+/* ОТКРЫВАЕМ ПОЛЬЗОВАТЕЛЯ ПО СЕССИИ */
+async function openUserSession(){
+
+if(!user){
+const s=await db.auth.getSession();
+
+if(!s.data.session){
+return;
+}
+
+user=s.data.session.user;
+}
+
+const p=await db
+.from('profiles')
+.select('role')
+.eq('id',user.id)
+.single();
+
+if(p.error){
+document.getElementById('loginMsg').innerHTML=
+'<div class="notice error">Профиль пользователя не найден.</div>';
+return;
+}
+
+document.getElementById('login').classList.add('hide');
+document.getElementById('app').classList.remove('hide');
+
+if(p.data.role==='dispatcher'){
+await initDispatcher();
+}else{
+await initDriver();
+}
+
+}
+
+
+/* ПРОВЕРЯЕМ СЕССИЮ ПОСЛЕ CTRL+R */
+async function checkSession(){
+await openUserSession();
+}
+
+
+/* ВОДИТЕЛИ */
 async function loadDrivers(){
-  const r=await db.from('drivers').select('id,name,phone,user_id,active').order('name');
-  if(r.error){const x=document.getElementById('driverRows');if(x)x.innerHTML='<tr><td colspan="4">'+r.error.message+'</td></tr>';return}
-  const data=r.data||[];
-  const rows=document.getElementById('driverRows');
-  if(rows) rows.innerHTML=data.map(d=>`<tr><td>${d.name||''}</td><td>${d.phone||'—'}</td><td>${d.user_id||'—'}</td><td>${d.active?'Aktīvs':'Neaktīvs'}</td></tr>`).join('');
-  const active=data.filter(d=>d.active);
-  const select=document.getElementById('driver');
-  if(select) select.innerHTML='<option value="">Vadītājs nav piešķirts</option>'+active.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
-  const pay=document.getElementById('payDriver');
-  if(pay) pay.innerHTML=active.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+
+const r=await db
+.from('drivers')
+.select('id,name,phone,user_id,active')
+.order('name');
+
+if(r.error){
+const x=document.getElementById('driverRows');
+
+if(x){
+x.innerHTML='<tr><td colspan="4">'+r.error.message+'</td></tr>';
 }
+
+return;
+}
+
+const data=r.data||[];
+
+const rows=document.getElementById('driverRows');
+
+if(rows){
+rows.innerHTML=data.map(d=>`
+<tr>
+<td>${d.name||''}</td>
+<td>${d.phone||'—'}</td>
+<td>${d.user_id||'—'}</td>
+<td>${d.active?'Aktīvs':'Neaktīvs'}</td>
+</tr>
+`).join('');
+}
+
+const active=data.filter(d=>d.active);
+
+const select=document.getElementById('driver');
+
+if(select){
+select.innerHTML=
+'<option value="">Vadītājs nav piešķirts</option>'+
+active.map(d=>`
+<option value="${d.id}">${d.name}</option>
+`).join('');
+}
+
+const pay=document.getElementById('payDriver');
+
+if(pay){
+pay.innerHTML=active.map(d=>`
+<option value="${d.id}">${d.name}</option>
+`).join('');
+}
+
+}
+
+
+/* ДОБАВИТЬ ВОДИТЕЛЯ */
 async function addDriver(){
-  const name=v('newDriverName').trim(),phone=v('newDriverPhone').trim(),uid=v('newDriverUserId').trim();
-  if(!name||!uid){document.getElementById('driverMsg').innerHTML='<div class="notice error">Vārds un Lietotāja ID ir obligāti.</div>';return}
-  const r=await db.from('drivers').insert({name,phone:phone||null,user_id:uid,active:true});
-  if(r.error){document.getElementById('driverMsg').innerHTML='<div class="notice error">'+r.error.message+'</div>';return}
-  document.getElementById('driverMsg').innerHTML='<div class="notice">Vadītājs pievienots.</div>';
-  document.getElementById('newDriverName').value='';document.getElementById('newDriverPhone').value='';document.getElementById('newDriverUserId').value='';
-  loadDrivers();
+
+const name=v('newDriverName').trim();
+const phone=v('newDriverPhone').trim();
+const uid=v('newDriverUserId').trim();
+
+if(!name||!uid){
+document.getElementById('driverMsg').innerHTML=
+'<div class="notice error">Vārds un Lietotāja ID ir obligāti.</div>';
+return;
 }
-async function initDispatcher(){document.getElementById('roleLabel').textContent='Dispečers';document.getElementById('dispatcherTabs').style.display='flex';
-let c=await db.from('clients').select('id,name,payment_type').eq('active',true).order('id'); console.log('CLIENTS:',c); 
-if(!c.error&&c.data){document.getElementById('client').innerHTML=c.data.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');document.getElementById('partnerClient').innerHTML=c.data.filter(x=>x.payment_type==='partner').map(x=>`<option value="${x.id}">${x.name}</option>`).join('');}
-let a=await db.from('vehicles').select('id,name,plate,phone').eq('active',true).order('id');document.getElementById('vehicle').innerHTML=(a.data||[]).map(x=>`<option value="${x.id}">${x.name} — ${x.plate}</option>`).join('');
-                                document.getElementById('vehicle').onchange=async()=>{
-  const id=Number(document.getElementById('vehicle').value);
-  const r=await db.from('vehicles').select('phone').eq('id',id).single();
-  document.getElementById('vehiclePhone').textContent=r.data?.phone?'📞 '+r.data.phone:'';
+
+const r=await db
+.from('drivers')
+.insert({
+name,
+phone:phone||null,
+user_id:uid,
+active:true
+});
+
+if(r.error){
+document.getElementById('driverMsg').innerHTML=
+'<div class="notice error">'+r.error.message+'</div>';
+return;
+}
+
+document.getElementById('driverMsg').innerHTML=
+'<div class="notice">Vadītājs pievienots.</div>';
+
+document.getElementById('newDriverName').value='';
+document.getElementById('newDriverPhone').value='';
+document.getElementById('newDriverUserId').value='';
+
+await loadDrivers();
+
+}
+
+
+/* ДИСПЕТЧЕР */
+async function initDispatcher(){
+
+document.getElementById('roleLabel').textContent='Dispečers';
+
+document.getElementById('dispatcherTabs').style.display='flex';
+
+
+/* КЛИЕНТЫ */
+let c=await db
+.from('clients')
+.select('id,name,payment_type')
+.eq('active',true)
+.order('id');
+
+if(c.error){
+
+msg('Klientu ielāde neizdevās: '+c.error.message,true);
+
+}else if(c.data){
+
+const clientSelect=document.getElementById('client');
+
+clientSelect.innerHTML=
+'<option value="">Izvēlies klientu</option>'+
+c.data.map(x=>`
+<option value="${x.id}">${x.name}</option>
+`).join('');
+
+document.getElementById('partnerClient').innerHTML=
+c.data
+.filter(x=>x.payment_type==='partner')
+.map(x=>`
+<option value="${x.id}">${x.name}</option>
+`).join('');
+
+}
+
+
+/* EVAKUATORI */
+let a=await db
+.from('vehicles')
+.select('id,name,plate,phone')
+.eq('active',true)
+.order('id');
+
+const vehicle=document.getElementById('vehicle');
+
+vehicle.innerHTML=
+'<option value="">Izvēlies evakuatoru</option>'+
+(a.data||[]).map(x=>`
+<option value="${x.id}">
+${x.name} — ${x.plate}
+</option>
+`).join('');
+
+
+vehicle.onchange=async()=>{
+
+const id=Number(vehicle.value);
+
+if(!id){
+document.getElementById('vehiclePhone').textContent='';
+return;
+}
+
+const r=await db
+.from('vehicles')
+.select('phone')
+.eq('id',id)
+.single();
+
+document.getElementById('vehiclePhone').textContent=
+r.data?.phone?'📞 '+r.data.phone:'';
+
 };
- document.getElementById('vehicle').dispatchEvent(new Event('change'));                               
-let d=await db.from('drivers').select('id,name').eq('active',true).order('id');document.getElementById('driver').innerHTML='<option value="">Vadītājs nav piešķirts</option>'+(d.data||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');await loadOrders()}
+
+
+vehicle.dispatchEvent(new Event('change'));
+
+
+/* ВОДИТЕЛИ */
+let d=await db
+.from('drivers')
+.select('id,name')
+.eq('active',true)
+.order('id');
+
+document.getElementById('driver').innerHTML=
+'<option value="">Vadītājs nav piešķirts</option>'+
+(d.data||[]).map(x=>`
+<option value="${x.id}">${x.name}</option>
+`).join('');
+
+await loadOrders();
+
+}
+
+
+/* ОПЛАТА ВОДИТЕЛЯ */
 async function loadDriverPay(){
-let did=Number(v('payDriver')),from=v('payFrom'),to=v('payTo');
-let r=await db.from('orders').select('driver_pay,kilometers,tow_ins,extra_work_amount').eq('driver_id',did).eq('status','completed').gte('completed_at',from+'T00:00:00').lte('completed_at',to+'T23:59:59');
-if(r.error){document.getElementById('payResult').innerHTML='<div class="notice error">'+r.error.message+'</div>';return}
-let a=r.data||[],pay=a.reduce((x,o)=>x+Number(o.driver_pay||0),0),km=a.reduce((x,o)=>x+Number(o.kilometers||0),0),rt=a.reduce((x,o)=>x+Number(o.tow_ins||0),0),ex=a.reduce((x,o)=>x+Number(o.extra_work_amount||0),0);
-document.getElementById('payResult').innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${a.length}</b></div><div class="finance-card">Kiletri<br><b>${km}</b></div><div class="finance-card">Ratiņi<br><b>${rt}</b></div><div class="finance-card">Vadītāja samaksa<br><b>€${pay.toFixed(2)}</b></div></div><p>Izvilkšana: €${ex.toFixed(2)}</p>`}
+
+let did=Number(v('payDriver'));
+let from=v('payFrom');
+let to=v('payTo');
+
+let r=await db
+.from('orders')
+.select('driver_pay,kilometers,tow_ins,extra_work_amount')
+.eq('driver_id',did)
+.eq('status','completed')
+.gte('completed_at',from+'T00:00:00')
+.lte('completed_at',to+'T23:59:59');
+
+if(r.error){
+
+document.getElementById('payResult').innerHTML=
+'<div class="notice error">'+r.error.message+'</div>';
+
+return;
+}
+
+let a=r.data||[];
+
+let pay=a.reduce((x,o)=>x+Number(o.driver_pay||0),0);
+let km=a.reduce((x,o)=>x+Number(o.kilometers||0),0);
+let rt=a.reduce((x,o)=>x+Number(o.tow_ins||0),0);
+let ex=a.reduce((x,o)=>x+Number(o.extra_work_amount||0),0);
+
+document.getElementById('payResult').innerHTML=`
+<div class="finance-grid">
+
+<div class="finance-card">
+Pasūtījumi<br>
+<b>${a.length}</b>
+</div>
+
+<div class="finance-card">
+Kilometri<br>
+<b>${km}</b>
+</div>
+
+<div class="finance-card">
+Ratiņi<br>
+<b>${rt}</b>
+</div>
+
+<div class="finance-card">
+Vadītāja samaksa<br>
+<b>€${pay.toFixed(2)}</b>
+</div>
+
+</div>
+
+<p>Izvilkšana: €${ex.toFixed(2)}</p>
+`;
+
+}
+
+
+/* ПАРТНЕРСКИЙ ДОЛГ */
 async function loadPartnerDebt(){
-let cid=Number(v('partnerClient'));om
-let o=await db.from('orders').select('partner_debt').eq('client_id',cid).eq('status','completed');
-let c=await db.from('partner_collections').select('amount').eq('client_id',cid);
-if(o.error||c.error){document.getElementById('debtResult').innerHTML='<div class="notice error">Pārbaudi partneru tabulu un tiesības.</div>';return}
-let debt=(o.data||[]).reduce((x,a)=>x+Number(a.partner_debt||0),0)-(c.data||[]).reduce((x,a)=>x+Number(a.amount||0),0);
-document.getElementById('debtResult').innerHTML=`<h3>Partnera parāds: €${Math.max(0,debt).toFixed(2)}</h3><p>Inkasācija tiks pievienota nākamajā solī pēc šī aprēķina pārbaudes.</p>`}
-async function initDriver(){let d=await db.from('drivers').select('id,name').eq('user_id',user.id).single();if(d.error){alert('Vadītājs nav atrasts');return}driverId=d.data.id;document.getElementById('roleLabel').textContent='Vadītājs';document.getElementById('dispatcherTabs').style.display='none';document.getElementById('new').classList.remove('active');document.getElementById('orders').classList.remove('active');document.getElementById('driverView').classList.add('active');await loadDriverOrders()}
+
+let cid=Number(v('partnerClient'));
+
+if(!cid){
+document.getElementById('debtResult').innerHTML=
+'<div class="notice error">Izvēlies partneri.</div>';
+return;
+}
+
+let o=await db
+.from('orders')
+.select('partner_debt')
+.eq('client_id',cid)
+.eq('status','completed');
+
+let c=await db
+.from('partner_collections')
+.select('amount')
+.eq('client_id',cid);
+
+if(o.error||c.error){
+
+document.getElementById('debtResult').innerHTML=
+'<div class="notice error">Pārbaudi partneru tabulu un tiesības.</div>';
+
+return;
+}
+
+let debt=
+(o.data||[]).reduce(
+(x,a)=>x+Number(a.partner_debt||0),0
+)
+-
+(c.data||[]).reduce(
+(x,a)=>x+Number(a.amount||0),0
+);
+
+document.getElementById('debtResult').innerHTML=`
+<h3>
+Partnera parāds:
+€${Math.max(0,debt).toFixed(2)}
+</h3>
+<p>
+Inkasācija tiks pievienota nākamajā solī pēc šī aprēķina pārbaudes.
+</p>
+`;
+
+}
+
+
+/* ВОДИТЕЛЬ */
+async function initDriver(){
+
+let d=await db
+.from('drivers')
+.select('id,name')
+.eq('user_id',user.id)
+.single();
+
+if(d.error){
+
+alert('Vadītājs nav atrasts');
+return;
+
+}
+
+driverId=d.data.id;
+
+document.getElementById('roleLabel').textContent='Vadītājs';
+
+document.getElementById('dispatcherTabs').style.display='none';
+
+document.getElementById('new').classList.remove('active');
+document.getElementById('orders').classList.remove('active');
+
+document.getElementById('driverView').classList.add('active');
+
+await loadDriverOrders();
+
+}
+
+
+/* СОЗДАНИЕ ЗАКАЗА */
 async function createOrder(){
-let clientId=Number(v('client')),cash=Number(v('cashReceived')||0),our=Number(v('ourShare')||0),extra=Number(v('extraAmount')||0);
-if(extra && (!v('extraWork') || extra<15 || extra>50)){msg('Izvilkšanas summai jābūt no €15 līdz €50.',true);return}
-if(!v('car')||!v('from')||!v('to')||!v('price')){msg('Aizpildi automašīnu, atrašanās vietu, galamērķi un cenu.',true);return}
+
+let clientId=Number(v('client'));
+
+let cash=Number(v('cashReceived')||0);
+let our=Number(v('ourShare')||0);
+let extra=Number(v('extraAmount')||0);
+
+
+/* ПРОВЕРКА КЛИЕНТА */
+if(!clientId){
+
+msg('Izvēlies klientu.',true);
+return;
+
+}
+
+
+/* ПРОВЕРКА ДОПОЛНИТЕЛЬНОЙ РАБОТЫ */
+if(
+extra &&
+(!v('extraWork') || extra<15 || extra>50)
+){
+
+msg(
+'Izvilkšanas summai jābūt no €15 līdz €50.',
+true
+);
+
+return;
+
+}
+
+
+/* ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ */
+if(
+!v('car')||
+!v('from')||
+!v('to')||
+!v('price')
+){
+
+msg(
+'Aizpildi automašīnu, atrašanās vietu, galamērķi un cenu.',
+true
+);
+
+return;
+
+}
+
+
 let partnerDebt=Math.max(0,cash-our);
-let o={client_id:clientId,client_type:'',phone:v('phone'),car:v('car'),plate:v('plate'),problem:v('problem'),wheels:v('wheels'),neutral:v('neutral'),steering:v('steering'),pickup:v('from'),destination:v('to'),price:Number(v('price')),vehicle_id:Number(v('vehicle')),driver_id:v('driver')?Number(v('driver')):null,status:'new',cash_received:cash,our_share:our,partner_debt:partnerDebt,extra_work:v('extraWork')||null,extra_work_amount:extra};
-let r=await db.from('orders').insert(o).select('id').single();if(r.error){msg('Neizdevās saglabāt pasūtījumu: '+r.error.message,true);return}msg('Pasūtījums Nr. '+r.data.id+' saglabāts un nosūtīts vadītājam.');msg('Pasūtījums Nr. '+r.data.id+' saglabāts un nosūtīts vadītājam.');['client','phone','car','plate','problem','from','to','price','cashReceived','ourShare','extraAmount'].forEach(id=>{let e=document.getElementById(id);if(e)e.value=''});['wheels','neutral','steering','extraWork','vehicle','driver'].forEach(id=>{let e=document.getElementById(id);if(e)e.selectedIndex=0});document.getElementById('vehiclePhone').textContent='';await loadOrders()}
-async function loadOrders(){let r=await db.from('orders').select('id,client_type,car,pickup,destination,price,status,drivers(name),vehicles(name,plate)').order('id',{ascending:false});document.getElementById('rows').innerHTML=(r.data||[]).map(o=>`<tr><td>${o.id}</td><td>${o.client_type}</td><td>${o.car}</td><td>${o.pickup}</td><td>${o.destination}</td><td>${o.vehicles?o.vehicles.name+' — '+o.vehicles.plate:'—'}</td><td>${o.drivers?o.drivers.name:'—'}</td><td>€${o.price}</td><td><span class="status status-${o.status}">${statusLv(o.status)}</span></td></tr>`).join('')}
-async function loadDriverOrders(){let r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status').eq('driver_id',driverId).order('id',{ascending:false});document.getElementById('driverHead').innerHTML='<div class="muted">Vadītāja kabinets</div><h2>Mani pasūtījumi</h2>';document.getElementById('driverOrders').innerHTML=(r.data||[]).map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car}</h2><p><b>${o.pickup}</b><br>→ ${o.destination}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${o.price}</b></p>${o.status==='new'?`<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>`:''}${o.status==='in_progress'?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>'}
-async function accept(id){let r=await db.from('orders').update({status:'in_progress',accepted_at:new Date().toISOString()}).eq('id',id).eq('driver_id',driverId);if(r.error)alert(r.error.message);else await loadDriverOrders()}
-async function finish(id){let km=Number(document.getElementById('km_'+id).value||0),rt=Number(document.getElementById('rt_'+id).value||0),h=new Date().getHours(),base=(h>=8&&h<20)?10:15,rate=(h>=8&&h<20)?.10:.15,pay=base+km*rate+rt*5;let r=await db.from('orders').update({status:'completed',completed_at:new Date().toISOString(),kilometers:km,tow_ins:rt,driver_pay:pay}).eq('id',id).eq('driver_id',driverId);if(r.error)alert(r.error.message);else{alert('Pasūtījums pabeigts. Vadītāja samaksa: €'+pay.toFixed(2));await loadDriverOrders()}}
-</script></body></html>
+
+
+/* ПОЛУЧАЕМ НАЗВАНИЕ КЛИЕНТА */
+const clientSelect=document.getElementById('client');
+const clientName=
+clientSelect.options[clientSelect.selectedIndex]?.text||'';
+
+
+let o={
+
+client_id:clientId,
+
+client_type:clientName,
+
+phone:v('phone'),
+
+car:v('car'),
+
+plate:v('plate'),
+
+problem:v('problem'),
+
+wheels:v('wheels'),
+
+neutral:v('neutral'),
+
+steering:v('steering'),
+
+pickup:v('from'),
+
+destination:v('to'),
+
+price:Number(v('price')),
+
+vehicle_id:Number(v('vehicle'))||null,
+
+driver_id:v('driver')?
+Number(v('driver')):
+null,
+
+status:'new',
+
+cash_received:cash,
+
+our_share:our,
+
+partner_debt:partnerDebt,
+
+extra_work:v('extraWork')||null,
+
+extra_work_amount:extra
+
+};
+
+
+let r=await db
+.from('orders')
+.insert(o)
+.select('id')
+.single();
+
+
+if(r.error){
+
+msg(
+'Neizdevās saglabāt pasūtījumu: '+
+r.error.message,
+true
+);
+
+return;
+
+}
+
+
+/* УСПЕШНО */
+msg(
+'Pasūtījums Nr. '+
+r.data.id+
+' saglabāts un nosūtīts vadītājam.'
+);
+
+
+/* ОЧИСТКА ПОЛЕЙ */
+[
+'client',
+'phone',
+'car',
+'plate',
+'problem',
+'from',
+'to',
+'price',
+'cashReceived',
+'ourShare',
+'extraAmount'
+].forEach(id=>{
+
+let e=document.getElementById(id);
+
+if(e)e.value='';
+
+});
+
+
+[
+'wheels',
+'neutral',
+'steering',
+'extraWork',
+'vehicle',
+'driver'
+].forEach(id=>{
+
+let e=document.getElementById(id);
+
+if(e)e.selectedIndex=0;
+
+});
+
+
+document.getElementById('vehiclePhone').textContent='';
+
+
+await loadOrders();
+
+}
+
+
+/* СПИСОК ЗАКАЗОВ */
+async function loadOrders(){
+
+let r=await db
+.from('orders')
+.select(`
+id,
+client_type,
+car,
+pickup,
+destination,
+price,
+status,
+drivers(name),
+vehicles(name,plate)
+`)
+.order('id',{ascending:false});
+
+
+if(r.error){
+
+document.getElementById('rows').innerHTML=
+'<tr><td colspan="9">'+
+r.error.message+
+'</td></tr>';
+
+return;
+
+}
+
+
+document.getElementById('rows').innerHTML=
+(r.data||[])
+.map(o=>`
+
+<tr>
+
+<td>${o.id}</td>
+
+<td>${o.client_type||'—'}</td>
+
+<td>${o.car||'—'}</td>
+
+<td>${o.pickup||'—'}</td>
+
+<td>${o.destination||'—'}</td>
+
+<td>
+${o.vehicles?
+o.vehicles.name+' — '+o.vehicles.plate:
+'—'}
+</td>
+
+<td>
+${o.drivers?
+o.drivers.name:
+'—'}
+</td>
+
+<td>€${o.price||0}</td>
+
+<td>
+<span class="status status-${o.status}">
+${statusLv(o.status)}
+</span>
+</td>
+
+</tr>
+
+`).join('');
+
+}
+
+
+/* ЗАКАЗЫ ВОДИТЕЛЯ */
+async function loadDriverOrders(){
+
+let r=await db
+.from('orders')
+.select(`
+id,
+car,
+plate,
+problem,
+wheels,
+neutral,
+steering,
+pickup,
+destination,
+price,
+status
+`)
+.eq('driver_id',driverId)
+.order('id',{ascending:false});
+
+
+document.getElementById('driverHead').innerHTML=
+'<div class="muted">Vadītāja kabinets</div>'+
+'<h2>Mani pasūtījumi</h2>';
+
+
+document.getElementById('driverOrders').innerHTML=
+(r.data||[])
+.map(o=>`
+
+<div class="panel">
+
+<div class="muted">
+Pasūtījums Nr. ${o.id} ·
+<span class="status status-${o.status}">
+${statusLv(o.status)}
+</span>
+</div>
+
+<h2>${o.car}</h2>
+
+<p>
+<b>${o.pickup}</b>
+<br>
+→ ${o.destination}
+</p>
+
+<p>${o.problem||''}</p>
+
+<p>
+Cena klientam:
+<b>€${o.price}</b>
+</p>
+
+${
+o.status==='new'?
+`
+<button
+class="primary"
+style="width:100%"
+onclick="accept(${o.id})"
+>
+PIEŅEMT PASŪTĪJUMU
+</button>
+`
+:''
+}
+
+${
+o.status==='in_progress'?
+`
+<label class="field">
+Kilometri
+<input
+id="km_${o.id}"
+type="number"
+value="0"
+>
+</label>
+
+<label class="field">
+Ratiņu skaits
+<input
+id="rt_${o.id}"
+type="number"
+value="0"
+>
+</label>
+
+<button
+class="green"
+style="width:100%;margin-top:12px"
+onclick="finish(${o.id})"
+>
+PABEIGT PASŪTĪJUMU
+</button>
+`
+:''
+}
+
+</div>
+
+`).join('')||
+'<div class="panel">Aktīvu pasūtījumu nav.</div>';
+
+}
+
+
+/* ПРИНЯТЬ ЗАКАЗ */
+async function accept(id){
+
+let r=await db
+.from('orders')
+.update({
+status:'in_progress',
+accepted_at:new Date().toISOString()
+})
+.eq('id',id)
+.eq('driver_id',driverId);
+
+
+if(r.error){
+
+alert(r.error.message);
+
+}else{
+
+await loadDriverOrders();
+
+}
+
+}
+
+
+/* ЗАВЕРШИТЬ ЗАКАЗ */
+async function finish(id){
+
+let km=
+Number(
+document.getElementById('km_'+id).value||0
+);
+
+let rt=
+Number(
+document.getElementById('rt_'+id).value||0
+);
+
+let h=new Date().getHours();
+
+let base=(h>=8&&h<20)?10:15;
+
+let rate=(h>=8&&h<20)?.10:.15;
+
+let pay=
+base+
+km*rate+
+rt*5;
+
+
+let r=await db
+.from('orders')
+.update({
+
+status:'completed',
+
+completed_at:new Date().toISOString(),
+
+kilometers:km,
+
+tow_ins:rt,
+
+driver_pay:pay
+
+})
+.eq('id',id)
+.eq('driver_id',driverId);
+
+
+if(r.error){
+
+alert(r.error.message);
+
+}else{
+
+alert(
+'Pasūtījums pabeigts. Vadītāja samaksa: €'+
+pay.toFixed(2)
+);
+
+await loadDriverOrders();
+
+}
+
+}
+
+
+/* ВАЖНО: ПРОВЕРКА СОХРАНЁННОЙ СЕССИИ */
+checkSession();
+
+</script>
+
+</body>
+</html>
