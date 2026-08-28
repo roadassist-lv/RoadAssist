@@ -719,6 +719,7 @@ Vadītāja samaksa<br>
 </div>
 
 <p>Izvilkšana: €${ex.toFixed(2)}</p>
+<p class="muted">Vadītāja samaksa tiek saglabāta pie pasūtījuma pabeigšanas pēc tā brīža tarifa.</p>
 `;
 
 }
@@ -1334,16 +1335,47 @@ Number(
 document.getElementById('rt_'+id).value||0
 );
 
-let h=new Date().getHours();
+/* ТАРИФ ВОДИТЕЛЯ:
+   Будни 07:00–22:00 — дневной
+   Будни 22:00–07:00 — ночной
+   Суббота/воскресенье — весь день ночной
+   Праздники — весь день ночной
 
-let base=(h>=8&&h<20)?10:15;
+   Праздничные даты можно добавлять сюда в формате YYYY-MM-DD.
+*/
+const now=new Date();
+const dateKey=
+now.getFullYear()+'-'+
+String(now.getMonth()+1).padStart(2,'0')+'-'+
+String(now.getDate()).padStart(2,'0');
 
-let rate=(h>=8&&h<20)?.10:.15;
+const holidays=[
+  /* '2026-01-01',
+     '2026-04-03',
+     '2026-04-06' */
+];
 
-let pay=
-base+
-km*rate+
-rt*5;
+const day=now.getDay();
+const weekend=(day===0 || day===6);
+const holiday=holidays.includes(dateKey);
+const hour=now.getHours();
+
+const night=
+weekend ||
+holiday ||
+hour>=22 ||
+hour<7;
+
+const tariff=night?'Nakts':'Diena';
+
+const base=night?15:10;
+const rate=night?.15:.10;
+const towRate=5;
+
+const basePay=base;
+const kmPay=km*rate;
+const towPay=rt*towRate;
+const pay=basePay+kmPay+towPay;
 
 
 let r=await db
@@ -1372,8 +1404,12 @@ alert(r.error.message);
 }else{
 
 alert(
-'Pasūtījums pabeigts. Vadītāja samaksa: €'+
-pay.toFixed(2)
+'Pasūtījums pabeigts.\\n\\n'+
+'Tarifs: '+tariff+'\\n'+
+'Bāze: €'+basePay.toFixed(2)+'\\n'+
+'Kilometri: €'+kmPay.toFixed(2)+'\\n'+
+'Ratiņi: €'+towPay.toFixed(2)+'\\n'+
+'Kopā: €'+pay.toFixed(2)
 );
 
 await loadDriverOrders();
