@@ -651,18 +651,9 @@ vehicle.dispatchEvent(new Event('change'));
 
 
 /* ВОДИТЕЛИ */
-let d=await db
-.from('drivers')
-.select('id,name')
-.eq('active',true)
-.order('id');
-
-document.getElementById('driver').innerHTML=
-'<option value="">Vadītājs nav piešķirts</option>'+
-(d.data||[]).map(x=>`
-<option value="${x.id}">${x.name}</option>
-`).join('');
-
+/* loadDrivers() заполняет и список водителей для заказа,
+   и список водителей в разделе Vadītāju samaksa */
+await loadDrivers();
 await loadOrders();
 
 }
