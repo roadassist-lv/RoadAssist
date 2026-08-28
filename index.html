@@ -1102,21 +1102,28 @@ const r=await db
 .from('orders')
 .update(updateData)
 .eq('id',id)
-.select('id,driver_id,vehicle_id')
-.single();
+.select('id,driver_id,vehicle_id');
 
 if(r.error){
 alert('Neizdevās piešķirt vadītāju/evakuatoru: '+r.error.message);
 return;
 }
 
-if(!r.data || Number(r.data.driver_id)!==Number(driverValue)){
-alert('UPDATE tika izpildīts, bet vadītāja ID netika saglabāts. Pārbaudi RLS politikas tabulai orders.');
+const rows=r.data || [];
+
+if(rows.length===0){
+document.getElementById('msg').innerHTML=
+'<div class="notice error">Pasūtījums Nr. '+id+
+' tika apstrādāts, bet Supabase neatdeva atjaunināto rindu. Pārbaudi RLS politikas tabulai orders.</div>';
+await loadOrders();
 return;
 }
 
-if(Number(r.data.vehicle_id)!==Number(vehicleValue)){
-alert('Vadītājs saglabāts, bet evakuatora ID netika saglabāts. Pārbaudi RLS politikas tabulai orders.');
+const saved=rows[0];
+
+if(Number(saved.driver_id)!==Number(driverValue) ||
+   Number(saved.vehicle_id)!==Number(vehicleValue)){
+alert('Pasūtījums Nr. '+id+' tika atjaunināts, bet saglabātie vadītāja/evakuatora ID neatbilst izvēlei.');
 return;
 }
 
