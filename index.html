@@ -119,7 +119,7 @@ async function addDriver(){
   loadDrivers();
 }
 async function initDispatcher(){document.getElementById('roleLabel').textContent='Dispečers';document.getElementById('dispatcherTabs').style.display='flex';
-let c=await db.from('clients').select('id,name,payment_type').eq('active',true).order('id'); 
+let c=await db.from('clients').select('id,name,payment_type').eq('active',true).order('id'); console.log('CLIENTS:',c); 
 if(!c.error&&c.data){document.getElementById('client').innerHTML=c.data.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');document.getElementById('partnerClient').innerHTML=c.data.filter(x=>x.payment_type==='partner').map(x=>`<option value="${x.id}">${x.name}</option>`).join('');}
 let a=await db.from('vehicles').select('id,name,plate,phone').eq('active',true).order('id');document.getElementById('vehicle').innerHTML=(a.data||[]).map(x=>`<option value="${x.id}">${x.name} — ${x.plate}</option>`).join('');
                                 document.getElementById('vehicle').onchange=async()=>{
