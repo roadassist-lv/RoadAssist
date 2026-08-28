@@ -651,6 +651,13 @@ document.getElementById('driver').innerHTML=
 <option value="${x.id}">${x.name}</option>
 `).join('');
 
+/* ВОДИТЕЛИ ДЛЯ РАСЧЕТА ЗАРПЛАТЫ */
+const pay=document.getElementById('payDriver');
+if(pay){
+  pay.innerHTML='<option value="">Izvēlies vadītāju</option>'+
+  (d.data||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+}
+
 await loadOrders();
 
 }
