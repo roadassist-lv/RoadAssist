@@ -285,6 +285,26 @@ PARĀDĪT PARĀDU
 
 <div id="debtResult" style="margin-top:15px"></div>
 
+<div class="panel" style="margin-top:15px">
+<h3>Inkasācija</h3>
+
+<label class="field">
+Summa, €
+<input id="collectionAmount" type="number" min="0.01" step="0.01" placeholder="Piemēram, 100">
+</label>
+
+<label class="field" style="margin-top:12px">
+Piezīme
+<input id="collectionNote" placeholder="Piemēram, saņemts skaidrā naudā">
+</label>
+
+<button class="btn green" style="margin-top:12px" onclick="addPartnerCollection()">
+PIEVIENOT INKASĀCIJU
+</button>
+
+<div id="collectionMsg" style="margin-top:10px"></div>
+</div>
+
 </div>
 </section>
 
@@ -575,7 +595,7 @@ const clientSelect=document.getElementById('client');
 clientSelect.innerHTML=
 '<option value="">Izvēlies klientu</option>'+
 c.data.map(x=>`
-<option value="${x.id}">${x.name}</option>
+<option value="${x.id}" data-payment-type="${x.payment_type||''}">${x.name}</option>
 `).join('');
 
 document.getElementById('partnerClient').innerHTML=
@@ -754,12 +774,102 @@ Partnera parāds:
 €${Math.max(0,debt).toFixed(2)}
 </h3>
 <p>
-Inkasācija tiks pievienota nākamajā solī pēc šī aprēķina pārbaudes.
+Ievadi saņemto inkasācijas summu zemāk un nospied “PIEVIENOT INKASĀCIJU”.
 </p>
 `;
 
 }
 
+
+/* ДОБАВИТЬ ИНКАСАЦИЮ */
+async function addPartnerCollection(){
+
+let cid=Number(v('partnerClient'));
+let amount=Number(v('collectionAmount')||0);
+let note=v('collectionNote').trim();
+
+const result=document.getElementById('collectionMsg');
+
+if(!cid){
+result.innerHTML='<div class="notice error">Izvēlies partneri.</div>';
+return;
+}
+
+if(!amount || amount<=0){
+result.innerHTML='<div class="notice error">Ievadi inkasācijas summu.</div>';
+return;
+}
+
+/* PĀRBAUDĀM, LAI NEIEKASĒTU VAIRĀK PAR PARĀDU */
+let o=await db
+.from('orders')
+.select('partner_debt')
+.eq('client_id',cid)
+.eq('status','completed');
+
+let c=await db
+.from('partner_collections')
+.select('amount')
+.eq('client_id',cid);
+
+if(o.error||c.error){
+result.innerHTML='<div class="notice error">Neizdevās pārbaudīt partnera parādu.</div>';
+return;
+}
+
+let debt=
+(o.data||[]).reduce(
+(x,a)=>x+Number(a.partner_debt||0),0
+)-
+(c.data||[]).reduce(
+(x,a)=>x+Number(a.amount||0),0
+);
+
+debt=Math.max(0,debt);
+
+if(debt<=0){
+result.innerHTML='<div class="notice error">Partnerim nav atlikušā parāda.</div>';
+return;
+}
+
+if(amount>debt){
+result.innerHTML=
+'<div class="notice error">Inkasācija nevar būt lielāka par parādu €'+
+debt.toFixed(2)+'.</div>';
+return;
+}
+
+let r=await db
+.from('partner_collections')
+.insert({
+client_id:cid,
+amount:amount,
+collection_date:new Date().toISOString().slice(0,10),
+note:note||null,
+created_by:user?.id||null
+})
+.select('id')
+.single();
+
+if(r.error){
+result.innerHTML=
+'<div class="notice error">Neizdevās pievienot inkasāciju: '+
+r.error.message+
+'</div>';
+return;
+}
+
+result.innerHTML=
+'<div class="notice">Inkasācija €'+
+amount.toFixed(2)+
+' pievienota.</div>';
+
+document.getElementById('collectionAmount').value='';
+document.getElementById('collectionNote').value='';
+
+await loadPartnerDebt();
+
+}
 
 /* ВОДИТЕЛЬ */
 async function initDriver(){
@@ -846,13 +956,19 @@ return;
 }
 
 
-let partnerDebt=Math.max(0,cash-our);
-
-
-/* ПОЛУЧАЕМ НАЗВАНИЕ КЛИЕНТА */
+/* ПОЛУЧАЕМ ДАННЫЕ КЛИЕНТА */
 const clientSelect=document.getElementById('client');
-const clientName=
-clientSelect.options[clientSelect.selectedIndex]?.text||'';
+const selectedClient=
+clientSelect.options[clientSelect.selectedIndex];
+
+const clientName=selectedClient?.text||'';
+const paymentType=selectedClient?.dataset.paymentType||'';
+
+/* ДОЛГ СОЗДАЁТСЯ ТОЛЬКО ДЛЯ PARTNER */
+let partnerDebt=
+paymentType==='partner'?
+Math.max(0,cash-our):
+0;
 
 
 let o={
