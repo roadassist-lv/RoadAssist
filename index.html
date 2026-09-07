@@ -355,6 +355,10 @@ const db=window.supabase.createClient(
 
 let user=null;
 let driverId=null;
+let vehicleId=null;
+let vehicleName='';
+let vehiclePlate='';
+let sessionMode=null;
 let dispatcherDrivers=[];
 let dispatcherVehicles=[];
 
@@ -427,6 +431,26 @@ return;
 user=s.data.session.user;
 }
 
+/* СНАЧАЛА ПРОВЕРЯЕМ, НЕ ЯВЛЯЕТСЯ ЛИ ЭТО АККАУНТОМ МАШИНЫ */
+const vehicleAccount=await db
+.from('vehicles')
+.select('id,name,plate')
+.eq('user_id',user.id)
+.eq('active',true)
+.maybeSingle();
+
+if(vehicleAccount.data){
+  sessionMode='vehicle';
+  vehicleId=vehicleAccount.data.id;
+  vehicleName=vehicleAccount.data.name||'';
+  vehiclePlate=vehicleAccount.data.plate||'';
+
+  document.getElementById('login').classList.add('hide');
+  document.getElementById('app').classList.remove('hide');
+  await initVehicle();
+  return;
+}
+
 const p=await db
 .from('profiles')
 .select('role')
@@ -435,7 +459,7 @@ const p=await db
 
 if(p.error){
 document.getElementById('loginMsg').innerHTML=
-'<div class="notice error">Профиль пользователя не найден.</div>';
+'<div class="notice error">Профиль пользователя не найден и аккаунт не привязан к машине.</div>';
 return;
 }
 
@@ -443,9 +467,11 @@ document.getElementById('login').classList.add('hide');
 document.getElementById('app').classList.remove('hide');
 
 if(p.data.role==='dispatcher'){
-await initDispatcher();
+  sessionMode='dispatcher';
+  await initDispatcher();
 }else{
-await initDriver();
+  sessionMode='driver';
+  await initDriver();
 }
 
 }
@@ -824,6 +850,93 @@ document.getElementById('driverView').classList.add('active');
 
 await loadDriverOrders();
 
+}
+
+
+/* КАБИНЕТ МАШИНЫ */
+async function initVehicle(){
+
+  document.getElementById('roleLabel').textContent=
+    '🚛 '+vehicleName+' — '+vehiclePlate;
+
+  if('serviceWorker' in navigator){
+    try{
+      await navigator.serviceWorker.register('./sw.js');
+    }catch(e){
+      console.warn('Service Worker:',e);
+    }
+  }
+
+  const pushBox=document.getElementById('driverHead');
+  if(pushBox && 'Notification' in window){
+    const current=Notification.permission;
+    const label=current==='granted'?'🔔 Paziņojumi ir atļauti':
+      current==='denied'?'🔕 Paziņojumi ir bloķēti pārlūkā':'🔔 IESLĒGT PAZIŅOJUMUS';
+    const disabled=current==='denied'?' disabled':'';
+    pushBox.innerHTML += `<button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()"${disabled}>${label}</button>`;
+  }
+
+  document.getElementById('dispatcherTabs').style.display='none';
+  document.getElementById('new').classList.remove('active');
+  document.getElementById('orders').classList.remove('active');
+  document.getElementById('driverView').classList.add('active');
+
+  await loadVehicleOrders();
+}
+
+
+/* ЗАКАЗЫ МАШИНЫ */
+async function loadVehicleOrders(){
+
+  let r=await db
+    .from('orders')
+    .select(`
+      id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,
+      drivers(id,name)
+    `)
+    .eq('vehicle_id',vehicleId)
+    .order('id',{ascending:false});
+
+  if(r.error){
+    document.getElementById('driverHead').innerHTML=
+      '<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div>'+
+      '<h2>Pasūtījumi</h2>'+
+      '<div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';
+    document.getElementById('driverOrders').innerHTML='';
+    return;
+  }
+
+  document.getElementById('driverHead').innerHTML=
+    '<div class="muted">🚛 Mašīnas kabinets</div>'+
+    '<h2>'+vehicleName+' — '+vehiclePlate+'</h2>'+
+    '<p class="muted">Šis telefons ir piesaistīts šim evakuatoram.</p>';
+
+  if('Notification' in window){
+    const current=Notification.permission;
+    const label=current==='granted'?'🔔 Paziņojumi ir atļauti':
+      current==='denied'?'🔕 Paziņojumi ir bloķēti pārlūkā':'🔔 IESLĒGT PAZIŅOJUMUS';
+    const disabled=current==='denied'?' disabled':'';
+    document.getElementById('driverHead').innerHTML +=
+      `<button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()"${disabled}>${label}</button>`;
+  }
+
+  document.getElementById('driverOrders').innerHTML=
+    (r.data||[]).map(o=>`
+      <div class="panel">
+        <div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div>
+        <h2>${o.car||'—'}</h2>
+        <p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p>
+        <p>${o.problem||''}</p>
+        <p>Cena klientam: <b>€${o.price||0}</b></p>
+        <p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>
+        ${o.status==='new'?`<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>`:''}
+        ${o.status==='in_progress'?`
+          <label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label>
+          <label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label>
+          <button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>
+        `:''}
+      </div>
+    `).join('') || '<div class="panel">Aktīvu pasūtījumu nav.</div>';
 }
 
 
@@ -1350,24 +1463,27 @@ PABEIGT PASŪTĪJUMU
 /* ПРИНЯТЬ ЗАКАЗ */
 async function accept(id){
 
-let r=await db
-.from('orders')
-.update({
-status:'in_progress',
-accepted_at:new Date().toISOString()
-})
-.eq('id',id)
-.eq('driver_id',driverId);
+let q=db.from('orders').update({
+  status:'in_progress',
+  accepted_at:new Date().toISOString()
+}).eq('id',id);
 
+if(sessionMode==='vehicle'){
+  q=q.eq('vehicle_id',vehicleId);
+}else if(sessionMode==='driver'){
+  q=q.eq('driver_id',driverId);
+}else{
+  alert('Nav atļauts.');
+  return;
+}
+
+const r=await q;
 
 if(r.error){
-
-alert(r.error.message);
-
+  alert(r.error.message);
 }else{
-
-await loadDriverOrders();
-
+  if(sessionMode==='vehicle') await loadVehicleOrders();
+  else await loadDriverOrders();
 }
 
 }
@@ -1429,23 +1545,24 @@ const towPay=rt*towRate;
 const pay=basePay+kmPay+towPay;
 
 
-let r=await db
-.from('orders')
-.update({
+let q=db.from('orders').update({
+  status:'completed',
+  completed_at:new Date().toISOString(),
+  kilometers:km,
+  tow_ins:rt,
+  driver_pay:pay
+}).eq('id',id);
 
-status:'completed',
+if(sessionMode==='vehicle'){
+  q=q.eq('vehicle_id',vehicleId);
+}else if(sessionMode==='driver'){
+  q=q.eq('driver_id',driverId);
+}else{
+  alert('Nav atļauts.');
+  return;
+}
 
-completed_at:new Date().toISOString(),
-
-kilometers:km,
-
-tow_ins:rt,
-
-driver_pay:pay
-
-})
-.eq('id',id)
-.eq('driver_id',driverId);
+const r=await q;
 
 
 if(r.error){
@@ -1463,7 +1580,9 @@ alert(
 'Kopā: €'+pay.toFixed(2)
 );
 
-await loadDriverOrders();
+if(sessionMode==='vehicle') await loadVehicleOrders();
+else if(sessionMode==='vehicle') await loadVehicleOrders();
+else await loadDriverOrders();
 
 }
 
