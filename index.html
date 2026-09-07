@@ -1337,7 +1337,8 @@ async function enablePushNotifications(){
 
     if(!subscription){
       subscription=await registration.pushManager.subscribe({
-        userVisibleOnly:true
+        userVisibleOnly:true,
+        applicationServerKey:'BEpkAm_4yXvP7d6j0Vkga0oumPZNv-B5ZAiC1GPEmwM5Bg5-HdRYCOrivvO-WS3DcHHcB6uSEzvMX6AIO84GLuQ'
       });
     }
 
