@@ -1332,15 +1332,19 @@ async function enablePushNotifications(){
 
     const registration=await navigator.serviceWorker.ready;
 
-    /* Izveidojam vai paņemam Push Subscription */
+    /* Dzēšam veco Push Subscription un izveidojam jaunu.
+       Tas novērš VAPID atslēgu neatbilstību pēc atslēgu maiņas. */
     let subscription=await registration.pushManager.getSubscription();
 
-    if(!subscription){
-      subscription=await registration.pushManager.subscribe({
-        userVisibleOnly:true,
-        applicationServerKey:'BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A'
-      });
+    if(subscription){
+      await subscription.unsubscribe();
+      subscription=null;
     }
+
+    subscription=await registration.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey:'BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A'
+    });
 
     const json=subscription.toJSON();
 
