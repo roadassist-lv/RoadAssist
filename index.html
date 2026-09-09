@@ -1346,6 +1346,30 @@ async function enablePushNotifications(){
       applicationServerKey:'BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A'
     });
 
+    /* Diagnostika: pārbaudām, kādu applicationServerKey pārlūks faktiski
+       piesaistīja jaunajai Push Subscription. Pats VAPID key netiek rādīts. */
+    let browserKeyFingerprint='nav pieejams';
+    let browserKeyLength='';
+
+    try{
+      const appKey=subscription.options && subscription.options.applicationServerKey;
+      if(appKey){
+        const bytes=new Uint8Array(appKey);
+        browserKeyLength=bytes.length;
+        const hash=await crypto.subtle.digest('SHA-256',bytes);
+        browserKeyFingerprint=Array.from(new Uint8Array(hash))
+          .map(b=>b.toString(16).padStart(2,'0')).join('');
+      }
+    }catch(diagError){
+      console.warn('Push applicationServerKey diagnostic:',diagError);
+    }
+
+    const expectedPublicKey='BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A';
+    const expectedKeyBytes=Uint8Array.from(atob(expectedPublicKey.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+    const expectedHash=await crypto.subtle.digest('SHA-256',expectedKeyBytes);
+    const expectedFingerprint=Array.from(new Uint8Array(expectedHash))
+      .map(b=>b.toString(16).padStart(2,'0')).join('');
+
     const json=subscription.toJSON();
 
     if(!json.endpoint || !json.keys || !json.keys.p256dh || !json.keys.auth){
@@ -1371,7 +1395,7 @@ async function enablePushNotifications(){
       data:{url:location.href}
     });
 
-    if(out) out.innerHTML += '<div class="notice">🔔 Paziņojumi ieslēgti un telefons reģistrēts sistēmā.</div>';
+    if(out) out.innerHTML += '<div class="notice">🔔 Paziņojumi ieslēgti un telefons reģistrēts sistēmā.<br><small>Push key fingerprint: '+browserKeyFingerprint+(browserKeyLength ? ' ('+browserKeyLength+' bytes)' : '')+'<br>Expected fingerprint: '+expectedFingerprint+'</small></div>';
 
   }catch(e){
     console.error('Push subscription:',e);
