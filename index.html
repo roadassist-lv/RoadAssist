@@ -1338,55 +1338,42 @@ async function enablePushNotifications(){
 
     let subscription=await registration.pushManager.getSubscription();
 
-    if(!subscription){
-      const b64='BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A';
-      const pad='='.repeat((4-b64.length%4)%4);
-      const bin=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
-      const applicationServerKey=Uint8Array.from(bin,c=>c.charCodeAt(0));
+    if(subscription){
+      show('Diagnostika: šajā pārlūkā jau eksistē Push Subscription. Atspied paziņojumus un mēģini vēlreiz, ja vajag pārbaudīt jaunu reģistrāciju.');
+      return;
+    }
 
-      try{
-        subscription=await registration.pushManager.subscribe({
-          userVisibleOnly:true,
-          applicationServerKey
-        });
-      }catch(pushError){
-        const name=pushError && pushError.name ? pushError.name : 'UnknownError';
-        const message=pushError && pushError.message ? pushError.message : String(pushError);
-        const stack=pushError && pushError.stack ? pushError.stack : '';
+    try{
+      /* DIAGNOSTIKAS TESTS: apzināti NEizmantojam VAPID applicationServerKey.
+         Ja arī šeit būs AbortError / Registration failed - push service error,
+         problēma nav mūsu VAPID atslēgā. */
+      subscription=await registration.pushManager.subscribe({
+        userVisibleOnly:true
+      });
+    }catch(pushError){
+      const name=pushError && pushError.name ? pushError.name : 'UnknownError';
+      const message=pushError && pushError.message ? pushError.message : String(pushError);
+      const stack=pushError && pushError.stack ? pushError.stack : '';
 
-        show(
-          'Push kļūda: <b>'+name+'</b><br>'+
-          message.replace(/</g,'&lt;').replace(/>/g,'&gt;')+
-          (stack ? '<br><small>'+stack.slice(0,500).replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</small>' : '')
-        );
-        return;
-      }
+      show(
+        'DIAGNOSTIKA — Push kļūda: <b>'+name+'</b><br>'+
+        message.replace(/</g,'&lt;').replace(/>/g,'&gt;')+
+        (stack ? '<br><small>'+stack.slice(0,500).replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</small>' : '')
+      );
+      return;
     }
 
     const json=subscription.toJSON();
 
-    if(!json.endpoint || !json.keys || !json.keys.p256dh || !json.keys.auth){
-      throw new Error('Push Subscription dati nav pieejami.');
+    if(!json.endpoint){
+      throw new Error('Push Subscription endpoint nav pieejams.');
     }
 
-    const save=await db
-      .from('push_subscriptions')
-      .upsert({
-        user_id:user.id,
-        endpoint:json.endpoint,
-        p256dh:json.keys.p256dh,
-        auth:json.keys.auth
-      },{onConflict:'endpoint'});
-
-    if(save.error) throw save.error;
-
-    await registration.showNotification('Towing Sistēma',{
-      body:'Paziņojumi ir ieslēgti. Šis telefons ir reģistrēts jauniem pasūtījumiem.',
-      tag:'towing-test',
-      data:{url:location.href}
-    });
-
-    if(out) out.innerHTML += '<div class="notice">🔔 Paziņojumi ieslēgti un telefons reģistrēts sistēmā.</div>';
+    /* ŠIS IR TIKAI DIAGNOSTIKAS TESTS.
+       Subscription apzināti NETIEK saglabāta Supabase push_subscriptions tabulā. */
+    if(out) out.innerHTML +=
+      '<div class="notice">✅ DIAGNOSTIKA: Push Subscription tika veiksmīgi izveidota bez VAPID applicationServerKey.<br>'+
+      '<small>Endpoint saņemts, bet šī testa abonēšana netiek saglabāta sistēmā.</small></div>';
 
   }catch(e){
     console.error('Push subscription:',e);
