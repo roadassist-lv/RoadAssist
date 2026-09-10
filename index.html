@@ -1321,18 +1321,8 @@ async function enablePushNotifications(){
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;');
 
-  if(!('Notification' in window)){
-    show('Šis pārlūks neatbalsta paziņojumus.');
-    return;
-  }
-
-  if(!('serviceWorker' in navigator)){
-    show('Šis pārlūks neatbalsta Service Worker.');
-    return;
-  }
-
-  if(!('PushManager' in window)){
-    show('Šis pārlūks neatbalsta PushManager.');
+  if(!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)){
+    show('Šis pārlūks neatbalsta nepieciešamās Push funkcijas.');
     return;
   }
 
@@ -1340,25 +1330,33 @@ async function enablePushNotifications(){
     const permission=await Notification.requestPermission();
 
     if(permission!=='granted'){
-      show('Paziņojumu atļauja netika dota. Atļauj paziņojumus pārlūka iestatījumos.');
+      show('Paziņojumu atļauja netika dota.');
       return;
     }
 
     const registration=await navigator.serviceWorker.ready;
 
-    let subscription=await registration.pushManager.getSubscription();
+    // V12: pilnībā noņemam veco browser Push Subscription,
+    // lai tā nevarētu palikt piesaistīta vecajiem VAPID credentials.
+    const oldSubscription=await registration.pushManager.getSubscription();
 
-    if(!subscription){
-      const b64='BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A';
-      const pad='='.repeat((4-b64.length%4)%4);
-      const bin=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
-      const applicationServerKey=Uint8Array.from(bin,c=>c.charCodeAt(0));
-
-      subscription=await registration.pushManager.subscribe({
-        userVisibleOnly:true,
-        applicationServerKey
-      });
+    if(oldSubscription){
+      try{
+        await oldSubscription.unsubscribe();
+      }catch(unsubError){
+        console.warn('V12 old subscription unsubscribe:',unsubError);
+      }
     }
+
+    const b64='BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A';
+    const pad='='.repeat((4-b64.length%4)%4);
+    const bin=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+    const applicationServerKey=Uint8Array.from(bin,c=>c.charCodeAt(0));
+
+    const subscription=await registration.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey
+    });
 
     const json=subscription.toJSON();
 
@@ -1366,36 +1364,45 @@ async function enablePushNotifications(){
       throw new Error('Push Subscription dati nav pieejami.');
     }
 
+    // Vecās šīs ierīces subscriptions dzēšam no DB,
+    // pēc tam saglabājam tikai jauno.
+    const cleanup=await db
+      .from('push_subscriptions')
+      .delete()
+      .eq('user_id',user.id);
+
+    if(cleanup.error) throw cleanup.error;
+
     const save=await db
       .from('push_subscriptions')
-      .upsert({
+      .insert({
         user_id:user.id,
         endpoint:json.endpoint,
         p256dh:json.keys.p256dh,
         auth:json.keys.auth
-      },{onConflict:'endpoint'});
+      });
 
     if(save.error) throw save.error;
 
     try{
       await registration.showNotification('Towing Sistēma',{
-        body:'Paziņojumi ir ieslēgti. Šis telefons ir reģistrēts jauniem pasūtījumiem.',
-        tag:'towing-test',
+        body:'Paziņojumi ir ieslēgti. Jaunā Push Subscription ir reģistrēta.',
+        tag:'towing-test-v12',
         data:{url:location.href}
       });
     }catch(notificationError){
-      console.warn('Local notification test:',notificationError);
+      console.warn('V12 local notification:',notificationError);
     }
 
-    show('🔔 Paziņojumi ieslēgti un telefons reģistrēts jauniem pasūtījumiem.',false);
+    show('🔔 Paziņojumi ieslēgti. Vecā Push Subscription nomainīta uz jaunu.',false);
 
   }catch(e){
-    console.error('Push subscription:',e);
+    console.error('V12 Push subscription:',e);
     const name=e && e.name ? e.name : 'Error';
     const message=e && e.message ? e.message : String(e);
 
     show(
-      'Neizdevās reģistrēt paziņojumus: <b>'+esc(name)+'</b><br>'+
+      'V12 — Neizdevās pārreģistrēt paziņojumus: <b>'+esc(name)+'</b><br>'+
       esc(message)
     );
   }
