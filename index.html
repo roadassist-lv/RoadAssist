@@ -1343,7 +1343,12 @@ async function enablePushNotifications(){
 
     subscription=await registration.pushManager.subscribe({
       userVisibleOnly:true,
-      applicationServerKey:'BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A'
+      applicationServerKey:(()=>{
+  const b64='BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A';
+  const pad='='.repeat((4-b64.length%4)%4);
+  const bin=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from(bin,c=>c.charCodeAt(0));
+})()
     });
 
     const json=subscription.toJSON();
