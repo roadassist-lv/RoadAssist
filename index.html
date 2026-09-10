@@ -1312,17 +1312,27 @@ window.assignOrder=assignOrder;
 async function enablePushNotifications(){
   const out=document.getElementById('driverHead');
 
+  const esc=(v)=>String(v ?? '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+
   const show=(msg)=>{
     if(out) out.innerHTML += '<div class="notice error">'+msg+'</div>';
   };
 
   if(!('Notification' in window)){
-    show('Šis pārlūks neatbalsta paziņojumus.');
+    show('V10: Notification API nav pieejams.');
     return;
   }
 
   if(!('serviceWorker' in navigator)){
-    show('Šis pārlūks neatbalsta Service Worker.');
+    show('V10: Service Worker nav pieejams.');
+    return;
+  }
+
+  if(!('PushManager' in window)){
+    show('V10: PushManager nav pieejams.');
     return;
   }
 
@@ -1330,59 +1340,73 @@ async function enablePushNotifications(){
     const permission=await Notification.requestPermission();
 
     if(permission!=='granted'){
-      show('Paziņojumu atļauja netika dota. Atļauj paziņojumus pārlūka iestatījumos.');
+      show('V10: paziņojumu atļauja nav granted: <b>'+esc(permission)+'</b>');
       return;
     }
 
     const registration=await navigator.serviceWorker.ready;
+    const manifest=document.querySelector('link[rel="manifest"]');
 
-    let subscription=await registration.pushManager.getSubscription();
+    let info=
+      '<b>V10 DIAGNOSTIKA</b><br>'+
+      'Origin: <small>'+esc(location.origin)+'</small><br>'+
+      'Manifest: <b>'+esc(manifest ? manifest.href : 'NAV')+'</b><br>'+
+      'SW scope: <small>'+esc(registration.scope)+'</small><br>'+
+      'SW state: <b>'+esc(registration.active ? registration.active.state : 'nav aktīva SW')+'</b><br>';
 
-    if(subscription){
-      show('Diagnostika: šajā pārlūkā jau eksistē Push Subscription. Atspied paziņojumus un mēģini vēlreiz, ja vajag pārbaudīt jaunu reģistrāciju.');
+    let existing=await registration.pushManager.getSubscription();
+
+    if(existing){
+      info +=
+        'Esoša Push Subscription: <b>IR</b><br>'+
+        'Endpoint: <small>'+esc(existing.endpoint)+'</small><br>'+
+        '<b>Subscribe netika atkārtots.</b>';
+      if(out) out.innerHTML += '<div class="notice">'+info+'</div>';
       return;
     }
+
+    const b64='BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A';
+    const pad='='.repeat((4-b64.length%4)%4);
+    const bin=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+    const applicationServerKey=Uint8Array.from(bin,c=>c.charCodeAt(0));
+
+    info +=
+      'VAPID key: <b>iesniegts</b><br>'+
+      'VAPID key garums: <b>'+applicationServerKey.length+' bytes</b><br>'+
+      'Tagad tiek izsaukts PushManager.subscribe()...<br>';
 
     try{
-      /* DIAGNOSTIKAS TESTS: apzināti NEizmantojam VAPID applicationServerKey.
-         Ja arī šeit būs AbortError / Registration failed - push service error,
-         problēma nav mūsu VAPID atslēgā. */
-      subscription=await registration.pushManager.subscribe({
-        userVisibleOnly:true
+      const subscription=await registration.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey
       });
+
+      info +=
+        '<b style="color:green">✅ SUCCESS — Push Subscription izveidots.</b><br>'+
+        'Endpoint: <small>'+esc(subscription.endpoint)+'</small><br>'+
+        '<b>Šis V10 tests neko nesaglabā Supabase.</b>';
+
+      if(out) out.innerHTML += '<div class="notice">'+info+'</div>';
     }catch(pushError){
-      const name=pushError && pushError.name ? pushError.name : 'UnknownError';
-      const message=pushError && pushError.message ? pushError.message : String(pushError);
-      const stack=pushError && pushError.stack ? pushError.stack : '';
+      const name=pushError?.name || 'UnknownError';
+      const message=pushError?.message || String(pushError);
 
-      show(
-        'DIAGNOSTIKA — Push kļūda: <b>'+name+'</b><br>'+
-        message.replace(/</g,'&lt;').replace(/>/g,'&gt;')+
-        (stack ? '<br><small>'+stack.slice(0,500).replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</small>' : '')
-      );
-      return;
+      info +=
+        '<b style="color:#b00020">❌ SUBSCRIBE FAILED</b><br>'+
+        'Error: <b>'+esc(name)+'</b><br>'+
+        'Message: '+esc(message)+'<br>'+
+        '<b>Šis V10 tests neko nesaglabā Supabase.</b>';
+
+      show(info);
+      console.error('V10 Push subscribe error:',pushError);
     }
-
-    const json=subscription.toJSON();
-
-    if(!json.endpoint){
-      throw new Error('Push Subscription endpoint nav pieejams.');
-    }
-
-    /* ŠIS IR TIKAI DIAGNOSTIKAS TESTS.
-       Subscription apzināti NETIEK saglabāta Supabase push_subscriptions tabulā. */
-    if(out) out.innerHTML +=
-      '<div class="notice">✅ DIAGNOSTIKA: Push Subscription tika veiksmīgi izveidota bez VAPID applicationServerKey.<br>'+
-      '<small>Endpoint saņemts, bet šī testa abonēšana netiek saglabāta sistēmā.</small></div>';
 
   }catch(e){
-    console.error('Push subscription:',e);
-    const name=e && e.name ? e.name : 'Error';
-    const message=e && e.message ? e.message : String(e);
     show(
-      'Neizdevās reģistrēt paziņojumus: <b>'+name+'</b><br>'+
-      message.replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      'V10: vispārēja kļūda — <b>'+esc(e?.name || 'Error')+'</b><br>'+
+      esc(e?.message || String(e))
     );
+    console.error('V10 Push diagnostic:',e);
   }
 }
 
