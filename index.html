@@ -1167,6 +1167,8 @@ pickup,
 destination,
 price,
 status,
+driver_id,
+vehicle_id,
 drivers(id,name),
 vehicles(id,name,plate)
 `)
@@ -1216,15 +1218,23 @@ o.drivers.name:
 <td>€${o.price||0}</td>
 
 <td>
-<select id="assignDriver_${o.id}" style="min-width:150px;padding:7px;border:1px solid #ccd5db;border-radius:7px">
-<option value="">Vadītājs nav piešķirts</option>
-${dispatcherDrivers.map(d=>`<option value="${d.id}" ${o.drivers&&Number(o.drivers.id)===Number(d.id)?'selected':''}>${d.name}</option>`).join('')}
-</select>
-<select id="assignVehicle_${o.id}" style="min-width:180px;padding:7px;border:1px solid #ccd5db;border-radius:7px;margin-top:5px">
-<option value="">Evakuators nav piešķirts</option>
-${dispatcherVehicles.map(v=>`<option value="${v.id}" ${o.vehicles&&Number(o.vehicles.id)===Number(v.id)?'selected':''}>${v.name} — ${v.plate}</option>`).join('')}
-</select>
-<button class="green" style="margin-top:5px" onclick="assignOrder(${o.id})">PIEVIENOT</button>
+${
+  o.status==='completed'
+  ? '<span class="muted">Pabeigts — mainīt nevar</span>'
+  : `
+    <select id="assignDriver_${o.id}" style="min-width:150px;padding:7px;border:1px solid #ccd5db;border-radius:7px">
+      <option value="">Vadītājs nav piešķirts</option>
+      ${dispatcherDrivers.map(d=>`<option value="${d.id}" ${o.drivers&&Number(o.drivers.id)===Number(d.id)?'selected':''}>${d.name}</option>`).join('')}
+    </select>
+    <select id="assignVehicle_${o.id}" style="min-width:180px;padding:7px;border:1px solid #ccd5db;border-radius:7px;margin-top:5px">
+      <option value="">Evakuators nav piešķirts</option>
+      ${dispatcherVehicles.map(v=>`<option value="${v.id}" ${o.vehicles&&Number(o.vehicles.id)===Number(v.id)?'selected':''}>${v.name} — ${v.plate}</option>`).join('')}
+    </select>
+    <button class="green" style="margin-top:5px" onclick="assignOrder(${o.id})">
+      ${o.driver_id||o.vehicle_id?'PĀRMAIŅĪT':'PIEVIENOT'}
+    </button>
+  `
+}
 </td>
 
 <td>
@@ -1244,6 +1254,32 @@ ${statusLv(o.status)}
 async function assignOrder(id){
 
 try{
+
+  /* Pabeigtu pasūtījumu vadītāju/evakuatoru mainīt nedrīkst. */
+  const statusCheck=await db
+    .from('orders')
+    .select('id,status')
+    .eq('id',id)
+    .maybeSingle();
+
+  if(statusCheck.error){
+    const out=document.getElementById('ordersMsg');
+    if(out) out.innerHTML='<div class="notice error">Neizdevās pārbaudīt pasūtījuma statusu: '+statusCheck.error.message+'</div>';
+    return;
+  }
+
+  if(!statusCheck.data){
+    const out=document.getElementById('ordersMsg');
+    if(out) out.innerHTML='<div class="notice error">Pasūtījums Nr. '+id+' nav atrasts.</div>';
+    return;
+  }
+
+  if(statusCheck.data.status==='completed'){
+    const out=document.getElementById('ordersMsg');
+    if(out) out.innerHTML='<div class="notice error">Pabeigtam pasūtījumam vadītāju un evakuatoru mainīt nevar.</div>';
+    await loadOrders();
+    return;
+  }
 
 const driverEl=document.getElementById('assignDriver_'+id);
 const vehicleEl=document.getElementById('assignVehicle_'+id);
@@ -1317,7 +1353,7 @@ return;
 
 if(out) out.innerHTML=
 '<div class="notice">Pasūtījumam Nr. '+id+
-' piešķirts vadītājs un evakuators.</div>';
+' atjaunots vadītājs un evakuators.</div>';
 
 await loadOrders();
 
@@ -1452,7 +1488,6 @@ price,
 status,
 driver_id
 `)
-    .or(`driver_id.is.null,driver_id.eq.${driverId}`)
     .order('id',{ascending:false});
 
   if(r.error){
@@ -1464,8 +1499,17 @@ driver_id
     return;
   }
 
+  /*
+    Vadītājs redz:
+    - jauns + nav vadītāja -> brīvs pasūtījums, pieejams pieņemšanai;
+    - jauns + mans vadītāja ID -> mans pasūtījums;
+    - izpildē/pabeigts -> tikai mani pasūtījumi.
+    Citu vadītāju pasūtījumi netiek rādīti.
+  */
   const data=(r.data||[]).filter(o=>{
-    if(o.status==='new') return o.driver_id===null || Number(o.driver_id)===Number(driverId);
+    if(o.status==='new'){
+      return o.driver_id===null || Number(o.driver_id)===Number(driverId);
+    }
     return Number(o.driver_id)===Number(driverId);
   });
 
