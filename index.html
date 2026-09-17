@@ -1298,12 +1298,24 @@ if(out) out.innerHTML='<div class="notice">Saglabāju pasūtījumu Nr. '+id+'...
 const newDriverId=driverValue ? Number(driverValue) : null;
 const newVehicleId=vehicleValue ? Number(vehicleValue) : null;
 
+/*
+  Ja vadītāju no neizpildīta pasūtījuma noņem,
+  pasūtījums atkal kļūst par brīvu jaunu pasūtījumu.
+  Pabeigtus pasūtījumus assignOrder iepriekš bloķē.
+*/
+const updateData={
+  driver_id:newDriverId,
+  vehicle_id:newVehicleId
+};
+
+if(newDriverId===null){
+  updateData.status='new';
+  updateData.accepted_at=null;
+}
+
 const r=await db
 .from('orders')
-.update({
-driver_id:newDriverId,
-vehicle_id:newVehicleId
-})
+.update(updateData)
 .eq('id',id);
 
 if(r.error){
@@ -1314,7 +1326,7 @@ return;
 /* PĀRBAUDĀM, VAI ID TIEŠĀM SAGLABĀTI */
 const check=await db
 .from('orders')
-.select('id,driver_id,vehicle_id')
+.select('id,driver_id,vehicle_id,status')
 .eq('id',id)
 .maybeSingle();
 
@@ -1335,8 +1347,13 @@ return;
 
 const savedDriverId=check.data.driver_id===null ? null : Number(check.data.driver_id);
 const savedVehicleId=check.data.vehicle_id===null ? null : Number(check.data.vehicle_id);
+const savedStatus=check.data.status;
 
-if(savedDriverId!==newDriverId || savedVehicleId!==newVehicleId){
+const expectedStatus=newDriverId===null ? 'new' : null;
+
+if(savedDriverId!==newDriverId ||
+   savedVehicleId!==newVehicleId ||
+   (expectedStatus!==null && savedStatus!==expectedStatus)){
 
 if(out) out.innerHTML=
 '<div class="notice error">Pasūtījums Nr. '+id+
@@ -1347,8 +1364,11 @@ return;
 }
 
 if(out) out.innerHTML=
-'<div class="notice">Pasūtījumam Nr. '+id+
-' atjaunots vadītājs un evakuators.</div>';
+'<div class="notice">'+
+(newDriverId===null
+  ? 'Pasūtījums Nr. '+id+' atbrīvots — tas atkal ir brīvs jauns pasūtījums.'
+  : 'Pasūtījumam Nr. '+id+' atjaunots vadītājs un evakuators.')+
+'</div>';
 
 await loadOrders();
 
