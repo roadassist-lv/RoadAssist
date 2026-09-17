@@ -1487,9 +1487,9 @@ async function enablePushNotifications(){
 /* ЗАКАЗЫ ВОДИТЕЛЯ */
 async function loadDriverOrders(){
 
-  let r=await db
-    .from('orders')
-    .select(`
+let r=await db
+.from('orders')
+.select(`
 id,
 car,
 plate,
@@ -1503,54 +1503,121 @@ price,
 status,
 driver_id
 `)
-    .order('id',{ascending:false});
+.order('id',{ascending:false});
 
-  if(r.error){
-    document.getElementById('driverHead').innerHTML=
-      '<div class="muted">Vadītāja kabinets</div>'+
-      '<h2>Mani pasūtījumi</h2>'+
-      '<div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';
-    document.getElementById('driverOrders').innerHTML='';
-    return;
-  }
+if(r.error){
+document.getElementById('driverHead').innerHTML=
+'<div class="muted">Vadītāja kabinets</div>'+
+'<h2>Mani pasūtījumi</h2>'+
+'<div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';
+document.getElementById('driverOrders').innerHTML='';
+return;
+}
 
-  /*
-    Vadītājs redz:
-    - jauns + nav vadītāja -> brīvs pasūtījums, pieejams pieņemšanai;
-    - jauns + mans vadītāja ID -> mans pasūtījums;
-    - izpildē/pabeigts -> tikai mani pasūtījumi.
-    Citu vadītāju pasūtījumi netiek rādīti.
-  */
-  const data=(r.data||[]).filter(o=>{
-    if(o.status==='new'){
-      return o.driver_id===null || Number(o.driver_id)===Number(driverId);
-    }
-    return Number(o.driver_id)===Number(driverId);
-  });
+const data=(r.data||[]).filter(o=>{
+  const isFreeNew = o.status==='new' && o.driver_id===null;
+  const isMyOrder = Number(o.driver_id)===Number(driverId);
+  return isFreeNew || isMyOrder;
+});
 
-  document.getElementById('driverHead').innerHTML=
-    '<div class="muted">Vadītāja kabinets</div>'+
-    '<h2>Mani pasūtījumi</h2>'+
-    '<p class="muted">Brīvus jaunus pasūtījumus var pieņemt jebkurš vadītājs.</p>';
+document.getElementById('driverHead').innerHTML=
+'<div class="muted">Vadītāja kabinets</div>'+
+'<h2>Mani pasūtījumi</h2>';
 
-  document.getElementById('driverOrders').innerHTML=
-    data.map(o=>`
-      <div class="panel">
-        <div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div>
-        <h2>${o.car||'—'}</h2>
-        <p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p>
-        <p>${o.problem||''}</p>
-        <p>Cena klientam: <b>€${o.price||0}</b></p>
-        ${o.status==='new'?`
-          <button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>
-        `:''}
-        ${o.status==='in_progress'?`
-          <label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label>
-          <label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label>
-          <button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>
-        `:''}
-      </div>
-    `).join('') || '<div class="panel">Aktīvu vai pabeigtu manu pasūtījumu nav.</div>';
+document.getElementById('driverOrders').innerHTML=
+data
+.map(o=>`
+
+<div class="panel">
+
+<div class="muted">
+Pasūtījums Nr. ${o.id} ·
+<span class="status status-${o.status}">
+${statusLv(o.status)}
+</span>
+</div>
+
+<h2>${o.car}</h2>
+
+<p>
+<b>${o.pickup}</b>
+<br>
+→ ${o.destination}
+</p>
+
+<p>${o.problem||''}</p>
+
+<p>
+Cena klientam:
+<b>€${o.price}</b>
+</p>
+
+${
+o.status==='new'?
+`
+<button
+class="primary"
+style="width:100%"
+onclick="accept(${o.id})"
+>
+PIEŅEMT PASŪTĪJUMU
+</button>
+`
+:''
+}
+
+${
+o.status==='in_progress'?
+`
+<label class="field">
+Kilometri
+<input
+id="km_${o.id}"
+type="number"
+value="0"
+>
+</label>
+
+<label class="field">
+Ratiņu skaits
+<input
+id="rt_${o.id}"
+type="number"
+value="0"
+>
+</label>
+
+<button
+class="green"
+style="width:100%"
+onclick="finish(${o.id})"
+>
+PABEIGT PASŪTĪJUMU
+</button>
+`
+:''
+}
+
+${
+o.status==='completed'?
+`
+<div class="notice">
+Pasūtījums izpildīts.
+</div>
+`
+:''
+}
+
+</div>
+
+`)
+.join('');
+
+if(!data.length){
+document.getElementById('driverOrders').innerHTML=
+'<div class="notice">Pašlaik nav brīvu vai jums piešķirtu pasūtījumu.</div>';
+}
+
 }
 
 /* ПРИНЯТЬ ЗАКАЗ */
