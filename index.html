@@ -1231,7 +1231,7 @@ ${
       ${dispatcherVehicles.map(v=>`<option value="${v.id}" ${o.vehicles&&Number(o.vehicles.id)===Number(v.id)?'selected':''}>${v.name} — ${v.plate}</option>`).join('')}
     </select>
     <button class="green" style="margin-top:5px" onclick="assignOrder(${o.id})">
-      ${o.driver_id||o.vehicle_id?'PĀRMAIŅĪT':'PIEVIENOT'}
+      ${o.driver_id||o.vehicle_id?'SAGLABĀT IZMAIŅAS':'PIEVIENOT'}
     </button>
   `
 }
@@ -1293,23 +1293,16 @@ return;
 const driverValue=driverEl.value;
 const vehicleValue=vehicleEl.value;
 
-if(!driverValue){
-if(out) out.innerHTML='<div class="notice error">Vispirms izvēlies vadītāju.</div>';
-return;
-}
-
-if(!vehicleValue){
-if(out) out.innerHTML='<div class="notice error">Vispirms izvēlies evakuatoru.</div>';
-return;
-}
-
 if(out) out.innerHTML='<div class="notice">Saglabāju pasūtījumu Nr. '+id+'...</div>';
+
+const newDriverId=driverValue ? Number(driverValue) : null;
+const newVehicleId=vehicleValue ? Number(vehicleValue) : null;
 
 const r=await db
 .from('orders')
 .update({
-driver_id:Number(driverValue),
-vehicle_id:Number(vehicleValue)
+driver_id:newDriverId,
+vehicle_id:newVehicleId
 })
 .eq('id',id);
 
@@ -1340,12 +1333,14 @@ await loadOrders();
 return;
 }
 
-if(Number(check.data.driver_id)!==Number(driverValue) ||
-   Number(check.data.vehicle_id)!==Number(vehicleValue)){
+const savedDriverId=check.data.driver_id===null ? null : Number(check.data.driver_id);
+const savedVehicleId=check.data.vehicle_id===null ? null : Number(check.data.vehicle_id);
+
+if(savedDriverId!==newDriverId || savedVehicleId!==newVehicleId){
 
 if(out) out.innerHTML=
 '<div class="notice error">Pasūtījums Nr. '+id+
-' tika apstrādāts, bet vadītājs/evakuators netika ierakstīts. Pārbaudi RLS politiku tabulai orders.</div>';
+' tika apstrādāts, bet vadītājs/evakuators netika ierakstīts pareizi. Pārbaudi RLS politiku tabulai orders.</div>';
 
 await loadOrders();
 return;
