@@ -1368,7 +1368,7 @@ async function enablePushNotifications(){
     const registration=await navigator.serviceWorker.ready;
 
     // Izmantojam esošo Push Subscription, ja tāda jau ir.
-    // Ja subscription nav, izveidojam jaunu.
+    // Ja tās nav, izveidojam jaunu. Esošo subscription neatceļam.
     let subscription=await registration.pushManager.getSubscription();
 
     if(!subscription){
@@ -1436,9 +1436,9 @@ async function enablePushNotifications(){
 /* ЗАКАЗЫ ВОДИТЕЛЯ */
 async function loadDriverOrders(){
 
-let r=await db
-.from('orders')
-.select(`
+  let r=await db
+    .from('orders')
+    .select(`
 id,
 car,
 plate,
@@ -1449,137 +1449,80 @@ steering,
 pickup,
 destination,
 price,
-status
+status,
+driver_id
 `)
-.eq('driver_id',driverId)
-.order('id',{ascending:false});
+    .or(`driver_id.is.null,driver_id.eq.${driverId}`)
+    .order('id',{ascending:false});
 
-if(r.error){
-document.getElementById('driverHead').innerHTML=
-'<div class="muted">Vadītāja kabinets</div>'+
-'<h2>Mani pasūtījumi</h2>'+
-'<div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';
-document.getElementById('driverOrders').innerHTML='';
-return;
+  if(r.error){
+    document.getElementById('driverHead').innerHTML=
+      '<div class="muted">Vadītāja kabinets</div>'+
+      '<h2>Mani pasūtījumi</h2>'+
+      '<div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';
+    document.getElementById('driverOrders').innerHTML='';
+    return;
+  }
+
+  const data=(r.data||[]).filter(o=>{
+    if(o.status==='new') return o.driver_id===null || Number(o.driver_id)===Number(driverId);
+    return Number(o.driver_id)===Number(driverId);
+  });
+
+  document.getElementById('driverHead').innerHTML=
+    '<div class="muted">Vadītāja kabinets</div>'+
+    '<h2>Mani pasūtījumi</h2>'+
+    '<p class="muted">Brīvus jaunus pasūtījumus var pieņemt jebkurš vadītājs.</p>';
+
+  document.getElementById('driverOrders').innerHTML=
+    data.map(o=>`
+      <div class="panel">
+        <div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div>
+        <h2>${o.car||'—'}</h2>
+        <p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p>
+        <p>${o.problem||''}</p>
+        <p>Cena klientam: <b>€${o.price||0}</b></p>
+        ${o.status==='new'?`
+          <button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>
+        `:''}
+        ${o.status==='in_progress'?`
+          <label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label>
+          <label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label>
+          <button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>
+        `:''}
+      </div>
+    `).join('') || '<div class="panel">Aktīvu vai pabeigtu manu pasūtījumu nav.</div>';
 }
-
-
-
-document.getElementById('driverHead').innerHTML=
-'<div class="muted">Vadītāja kabinets</div>'+
-'<h2>Mani pasūtījumi</h2>';
-
-
-document.getElementById('driverOrders').innerHTML=
-(r.data||[])
-.map(o=>`
-
-<div class="panel">
-
-<div class="muted">
-Pasūtījums Nr. ${o.id} ·
-<span class="status status-${o.status}">
-${statusLv(o.status)}
-</span>
-</div>
-
-<h2>${o.car}</h2>
-
-<p>
-<b>${o.pickup}</b>
-<br>
-→ ${o.destination}
-</p>
-
-<p>${o.problem||''}</p>
-
-<p>
-Cena klientam:
-<b>€${o.price}</b>
-</p>
-
-${
-o.status==='new'?
-`
-<button
-class="primary"
-style="width:100%"
-onclick="accept(${o.id})"
->
-PIEŅEMT PASŪTĪJUMU
-</button>
-`
-:''
-}
-
-${
-o.status==='in_progress'?
-`
-<label class="field">
-Kilometri
-<input
-id="km_${o.id}"
-type="number"
-value="0"
->
-</label>
-
-<label class="field">
-Ratiņu skaits
-<input
-id="rt_${o.id}"
-type="number"
-value="0"
->
-</label>
-
-<button
-class="green"
-style="width:100%;margin-top:12px"
-onclick="finish(${o.id})"
->
-PABEIGT PASŪTĪJUMU
-</button>
-`
-:''
-}
-
-</div>
-
-`).join('')||
-'<div class="panel">Aktīvu pasūtījumu nav.</div>';
-
-}
-
 
 /* ПРИНЯТЬ ЗАКАЗ */
 async function accept(id){
 
-let q=db.from('orders').update({
-  status:'in_progress',
-  accepted_at:new Date().toISOString()
-}).eq('id',id);
+  const r=await db
+    .from('orders')
+    .update({
+      status:'in_progress',
+      driver_id:driverId,
+      accepted_at:new Date().toISOString()
+    })
+    .eq('id',id)
+    .eq('status','new')
+    .or(`driver_id.is.null,driver_id.eq.${driverId}`)
+    .select('id,driver_id,status')
+    .maybeSingle();
 
-if(sessionMode==='vehicle'){
-  q=q.eq('vehicle_id',vehicleId);
-}else if(sessionMode==='driver'){
-  q=q.eq('driver_id',driverId);
-}else{
-  alert('Nav atļauts.');
-  return;
+  if(r.error){
+    alert(r.error.message);
+    return;
+  }
+
+  if(!r.data || Number(r.data.driver_id)!==Number(driverId)){
+    alert('Pasūtījumu jau pieņēma cits vadītājs vai tas vairs nav pieejams.');
+    await loadDriverOrders();
+    return;
+  }
+
+  await loadDriverOrders();
 }
-
-const r=await q;
-
-if(r.error){
-  alert(r.error.message);
-}else{
-  if(sessionMode==='vehicle') await loadVehicleOrders();
-  else await loadDriverOrders();
-}
-
-}
-
 
 /* ЗАВЕРШИТЬ ЗАКАЗ */
 async function finish(id){
