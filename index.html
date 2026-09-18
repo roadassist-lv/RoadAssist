@@ -1072,9 +1072,9 @@ async function clearVehicleSelfDriver(){
 async function loadVehicleOrders(){
 const vr=await db.from('vehicles').select('current_driver_id,work_status').eq('id',vehicleId).single();if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';
 const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,drivers(id,name)').order('id',{ascending:false});if(r.error){document.getElementById('driverHead').innerHTML='<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div><h2>Pasūtījumi</h2><div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';document.getElementById('driverOrders').innerHTML='';return;}
-const data=(r.data||[]).filter(o=>(o.status==='new'&&o.vehicle_id===null)||Number(o.vehicle_id)===Number(vehicleId));const statusText=currentVehicleWorkStatus==='on_line'?'🟢 Uz līnijas':currentVehicleWorkStatus==='service'?'🔧 Servisā':currentVehicleWorkStatus==='inactive'?'⚪ Neizmanto':'🟡 Nav vadītāja';document.getElementById('driverHead').innerHTML='<div class="muted">🚛 Mašīnas kabinets</div><h2>'+vehicleName+' — '+vehiclePlate+'</h2><p>Pašreizējais vadītājs: <b>'+(currentVehicleDriverName||'Nav piešķirts')+'</b></p><p>Stāvoklis: <b>'+statusText+'</b></p><p class="muted">Šis telefons ir pastāvīgi piesaistīts šim evakuatoram.</p><div id="vehicleDriverSelfBox" class="panel" style="margin-top:15px;border:2px solid #dfe4e8"><h3 style="margin-top:0">👤 Kas šodien strādā uz šīs mašīnas?</h3><p class="muted">Vadītājam nav sava sistēmas konta. Izvēlies savu vārdu uz šī evakuatora telefona.</p><div id="vehicleDriverSelfContent">Ielādē vadītājus...</div></div>';
-if('Notification' in window){const current=Notification.permission;const label=current==='granted'?'🔔 Paziņojumi ir atļauti':current==='denied'?'🔕 Paziņojumi ir bloķēti pārlūkā':'🔔 IESLĒGT PAZIŅOJUMUS';const disabled=current==='denied'?' disabled':'';document.getElementById('driverHead').innerHTML+=`<button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()"${disabled}>${label}</button>`;}
+const data=(r.data||[]).filter(o=>(o.status==='new'&&o.vehicle_id===null)||Number(o.vehicle_id)===Number(vehicleId));const statusText=currentVehicleWorkStatus==='on_line'?'🟢 Uz līnijas':currentVehicleWorkStatus==='service'?'🔧 Servisā':currentVehicleWorkStatus==='inactive'?'⚪ Neizmanto':'🟡 Nav vadītāja';document.getElementById('driverHead').innerHTML='<div class="muted">🚛 Mašīnas kabinets</div><h2>'+vehicleName+' — '+vehiclePlate+'</h2><p>Pašreizējais vadītājs: <b>'+(currentVehicleDriverName||'Nav piešķirts')+'</b></p><p>Stāvoklis: <b>'+statusText+'</b></p><p class="muted">Šis telefons ir pastāvīgi piesaistīts šim evakuatoram.</p><div id="vehicleDriverSelfBox" class="panel" style="margin-top:15px;border:2px solid #dfe4e8"><h3 style="margin-top:0">👤 Kas šodien strādā uz šīs mašīnas?</h3><p class="muted">Vadītājam nav sava sistēmas konta. Izvēlies savu vārdu uz šī evakuatora telefona.</p><div id="vehicleDriverSelfContent">Ielādē vadītājus...</div></div><div id="vehiclePushBox" class="panel" style="margin-top:15px;border:2px solid #dfe4e8"></div>';
 await loadVehicleDriverSelfSelect();
+await renderVehiclePushStatus();
 document.getElementById('driverOrders').innerHTML=data.map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'}</h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${o.price||0}</b></p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new' ? (currentVehicleWorkStatus==='on_line' && currentVehicleDriverId ? `<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>` : `<div class="notice">Šī mašīna pašlaik nevar pieņemt pasūtījumu: vispirms izvēlies vadītāju šī telefona augšdaļā un pārliecinies, ka mašīna ir uz līnijas.</div>`) : ''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>';
 }
 
@@ -1523,12 +1523,45 @@ alert('Kļūda: '+(e.message||e));
 window.assignOrder=assignOrder;
 
 
+/* PUSH STATUS: atsevišķs bloks, lai iPhone pogu nevarētu pārrakstīt citas pārzīmēšanas */
+async function renderVehiclePushStatus(){
+  const box=document.getElementById('vehiclePushBox');
+  if(!box) return;
+
+  if(!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)){
+    box.innerHTML='<h3 style="margin-top:0">🔔 Oповещений</h3><div class="notice error">Šajā iPhone pārlūka režīmā Push paziņojumi nav pieejami. Atver šo lietotni no iPhone sākuma ekrāna (Pievienot sākuma ekrānam) un mēģini vēlreiz.</div>';
+    return;
+  }
+
+  try{
+    const permission=Notification.permission;
+    let subscribed=false;
+    try{
+      const registration=await navigator.serviceWorker.ready;
+      subscribed=!!(await registration.pushManager.getSubscription());
+    }catch(e){
+      console.warn('Push status:',e);
+    }
+
+    if(permission==='granted' && subscribed){
+      box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice">Paziņojumi ir ieslēgti šajā telefonā.</div><button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()">🔄 ATJAUNOT PUSH SAVIENOJUMU</button>';
+    }else if(permission==='denied'){
+      box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice error">Paziņojumi ir bloķēti. Ieslēdz tos iPhone iestatījumos un pēc tam atgriezies šeit.</div>';
+    }else{
+      box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice">Šim telefonam vēl nav aktīvas Push Subscription.</div><button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()">🔔 IESLĒGT OPOVĒSTĪJUMUS</button>';
+    }
+  }catch(e){
+    console.warn('Push status render:',e);
+    box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><button class="primary" style="width:100%" onclick="enablePushNotifications()">🔔 IESLĒGT OPOVĒSTĪJUMUS</button>';
+  }
+}
+
 /* PUSH: saglabājam šī telefona Push Subscription Supabase */
 async function enablePushNotifications(){
-  const out=document.getElementById('driverHead');
+  const out=document.getElementById('vehiclePushBox');
 
   const show=(msg, error=true)=>{
-    if(out) out.innerHTML += '<div class="notice'+(error?' error':'')+'">'+msg+'</div>';
+    if(out) out.innerHTML += '<div class="notice'+(error?' error':'')+'" style="margin-top:10px">'+msg+'</div>';
   };
 
   const esc=(v)=>String(v ?? '')
@@ -1537,12 +1570,15 @@ async function enablePushNotifications(){
     .replace(/>/g,'&gt;');
 
   if(!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)){
-    show('Šis pārlūks neatbalsta nepieciešamās Push funkcijas.');
+    show('Šajā iPhone pārlūka režīmā Push paziņojumi nav pieejami. Atver šo lietotni no sākuma ekrāna un mēģini vēlreiz.');
     return;
   }
 
   try{
-    const permission=await Notification.requestPermission();
+    let permission=Notification.permission;
+    if(permission!=='granted'){
+      permission=await Notification.requestPermission();
+    }
 
     if(permission!=='granted'){
       show('Paziņojumu atļauja netika dota.');
@@ -1603,7 +1639,8 @@ async function enablePushNotifications(){
       console.warn('V12 local notification:',notificationError);
     }
 
-    show('🔔 Paziņojumi ieslēgti. Vecā Push Subscription nomainīta uz jaunu.',false);
+    show('🔔 Paziņojumi ieslēgti. Push Subscription reģistrēta šim telefonam.',false);
+    await renderVehiclePushStatus();
 
   }catch(e){
     console.error('V12 Push subscription:',e);
@@ -1611,9 +1648,10 @@ async function enablePushNotifications(){
     const message=e && e.message ? e.message : String(e);
 
     show(
-      'V12 — Neizdevās pārreģistrēt paziņojumus: <b>'+esc(name)+'</b><br>'+
-      esc(message)
+      'Neizdevās ieslēgt paziņojumus: <b>'+esc(name)+'</b><br>'+
+      esc(message)+'<br><br>Ja tas ir iPhone, atver lietotni no sākuma ekrāna un mēģini vēlreiz.'
     );
+    await renderVehiclePushStatus();
   }
 }
 
