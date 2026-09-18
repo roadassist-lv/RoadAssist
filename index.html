@@ -55,7 +55,10 @@ main{padding:12px}
 
 <header>
 <b>TOWING SISTĒMA</b>
+<div style="display:flex;align-items:center;gap:10px">
 <span id="roleLabel">Pieslēgšanās</span>
+<button id="logoutBtn" class="danger hide" style="padding:8px 11px" onclick="logout()">IZIET</button>
+</div>
 </header>
 
 <main>
@@ -434,6 +437,47 @@ await openUserSession();
 }
 
 
+
+/* IZIET NO SISTĒMAS */
+async function logout(){
+  try{
+    const r=await db.auth.signOut();
+    if(r.error){
+      alert('Neizdevās iziet no sistēmas: '+r.error.message);
+      return;
+    }
+  }catch(e){
+    alert('Neizdevās iziet no sistēmas: '+(e.message||e));
+    return;
+  }
+
+  user=null;
+  driverId=null;
+  vehicleId=null;
+  vehicleName='';
+  vehiclePlate='';
+  currentVehicleDriverId=null;
+  currentVehicleDriverName='';
+  currentVehicleWorkStatus='no_driver';
+  sessionMode=null;
+  dispatcherDrivers=[];
+  dispatcherVehicles=[];
+
+  document.getElementById('app').classList.add('hide');
+  document.getElementById('login').classList.remove('hide');
+  document.getElementById('logoutBtn').classList.add('hide');
+  document.getElementById('roleLabel').textContent='Pieslēgšanās';
+  document.getElementById('loginMsg').innerHTML='';
+  document.getElementById('password').value='';
+  document.getElementById('driverHead').innerHTML='';
+  document.getElementById('driverOrders').innerHTML='';
+  const selfBox=document.getElementById('vehicleDriverSelfContent');
+  if(selfBox) selfBox.innerHTML='';
+
+  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));
+  document.getElementById('new').classList.add('active');
+}
+
 /* ОТКРЫВАЕМ ПОЛЬЗОВАТЕЛЯ ПО СЕССИИ */
 async function openUserSession(){
 
@@ -465,6 +509,7 @@ if(vehicleAccount.data){
 
   document.getElementById('login').classList.add('hide');
   document.getElementById('app').classList.remove('hide');
+  document.getElementById('logoutBtn').classList.remove('hide');
   await initVehicle();
   return;
 }
@@ -483,6 +528,7 @@ return;
 
 document.getElementById('login').classList.add('hide');
 document.getElementById('app').classList.remove('hide');
+document.getElementById('logoutBtn').classList.remove('hide');
 
 if(p.data.role==='dispatcher'){
   sessionMode='dispatcher';
