@@ -309,10 +309,7 @@ Tālrunis
 <input id="newDriverPhone">
 </label>
 
-<label class="field">
-Lietotāja ID (nav obligāts)
-<input id="newDriverUserId" placeholder="Atstāj tukšu, ja vadītājam nav sava konta">
-</label>
+<p class="muted" style="margin:0">Vadītājam nav vajadzīgs atsevišķs sistēmas konts. Telefons un konts pieder evakuatoram.</p>
 
 </div>
 
@@ -328,7 +325,7 @@ PIEVIENOT VADĪTĀJU
 <tr>
 <th>Vārds</th>
 <th>Tālrunis</th>
-<th>User ID</th>
+<th>Mašīna</th>
 <th>Statuss</th>
 </tr>
 </thead>
@@ -498,21 +495,24 @@ await openUserSession();
 
 /* ВОДИТЕЛИ */
 async function loadDrivers(){
-const r=await db.from('drivers').select('id,name,phone,user_id,active').order('name');
-if(r.error){const x=document.getElementById('driverRows');if(x)x.innerHTML='<tr><td colspan="5">'+r.error.message+'</td></tr>';return;}
-const data=r.data||[];const rows=document.getElementById('driverRows');
-if(rows)rows.innerHTML=data.map(d=>`<tr><td>${d.name||''}</td><td>${d.phone||'—'}</td><td>${d.user_id||'—'}</td><td>${d.active?'Aktīvs':'Neaktīvs'}</td><td>${d.active?`<button class="btn" onclick="deactivateDriver(${d.id})">ATBRĪVOT</button>`:'—'}</td></tr>`).join('');
-const active=data.filter(d=>d.active);const select=document.getElementById('driver');if(select)select.innerHTML='<option value="">Vadītājs nav piešķirts</option>'+active.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
-const pay=document.getElementById('payDriver');if(pay)pay.innerHTML='<option value="">Izvēlies vadītāju</option>'+active.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+const [dr,vr]=await Promise.all([
+  db.from('drivers').select('id,name,phone,user_id,active').order('name'),
+  db.from('vehicles').select('id,name,plate,current_driver_id,active').eq('active',true).order('id')
+]);
+if(dr.error){const x=document.getElementById('driverRows');if(x)x.innerHTML='<tr><td colspan="5">'+dr.error.message+'</td></tr>';return;}
+if(vr.error){const x=document.getElementById('driverRows');if(x)x.innerHTML='<tr><td colspan="5">'+vr.error.message+'</td></tr>';return;}
+const data=dr.data||[];const vehicles=vr.data||[];const rows=document.getElementById('driverRows');
+if(rows)rows.innerHTML=data.map(d=>{const vv=vehicles.find(vv=>Number(vv.current_driver_id)===Number(d.id));const machine=vv?(vv.name+' — '+vv.plate):'—';return `<tr><td>${d.name||''}</td><td>${d.phone||'—'}</td><td>${machine}</td><td>${d.active?'Aktīvs':'Neaktīvs'}</td><td>${d.active?`<button class="btn" onclick="deactivateDriver(${d.id})">ATBRĪVOT</button>`:'—'}</td></tr>`;}).join('');
+const active=data.filter(d=>d.active);const select=document.getElementById('driver');if(select)select.innerHTML='<option value="">Vadītājs nav piešķirts</option>'+active.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');const pay=document.getElementById('payDriver');if(pay)pay.innerHTML='<option value="">Izvēlies vadītāju</option>'+active.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
 }
 
 /* ДОБАВИТЬ ВОДИТЕЛЯ */
 async function addDriver(){
-const name=v('newDriverName').trim();const phone=v('newDriverPhone').trim();const uid=v('newDriverUserId').trim();
+const name=v('newDriverName').trim();const phone=v('newDriverPhone').trim();
 if(!name){document.getElementById('driverMsg').innerHTML='<div class="notice error">Vārds un uzvārds ir obligāts.</div>';return;}
-const r=await db.from('drivers').insert({name,phone:phone||null,user_id:uid||null,active:true});
-if(r.error){document.getElementById('driverMsg').innerHTML='<div class="notice error">'+r.error.message+'</div>';return;}
-document.getElementById('driverMsg').innerHTML='<div class="notice">Vadītājs pievienots.</div>';document.getElementById('newDriverName').value='';document.getElementById('newDriverPhone').value='';document.getElementById('newDriverUserId').value='';await loadDrivers();await loadVehicleWork();
+const r=await db.from('drivers').insert({name,phone:phone||null,active:true});
+if(r.error){document.getElementById('driverMsg').innerHTML='<div class="notice error">Neizdevās pievienot vadītāju: '+r.error.message+'</div>';return;}
+document.getElementById('driverMsg').innerHTML='<div class="notice">Vadītājs '+name+' pievienots un ir pieejams izvēlei.</div>';document.getElementById('newDriverName').value='';document.getElementById('newDriverPhone').value='';await loadDrivers();await loadVehicleWork();
 }
 
 
@@ -833,7 +833,7 @@ const vr=await db.from('vehicles').select('current_driver_id,work_status').eq('i
 const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,drivers(id,name)').order('id',{ascending:false});if(r.error){document.getElementById('driverHead').innerHTML='<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div><h2>Pasūtījumi</h2><div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';document.getElementById('driverOrders').innerHTML='';return;}
 const data=(r.data||[]).filter(o=>(o.status==='new'&&o.vehicle_id===null)||Number(o.vehicle_id)===Number(vehicleId));const statusText=currentVehicleWorkStatus==='on_line'?'🟢 Uz līnijas':currentVehicleWorkStatus==='service'?'🔧 Servisā':currentVehicleWorkStatus==='inactive'?'⚪ Neizmanto':'🟡 Nav vadītāja';document.getElementById('driverHead').innerHTML='<div class="muted">🚛 Mašīnas kabinets</div><h2>'+vehicleName+' — '+vehiclePlate+'</h2><p>Pašreizējais vadītājs: <b>'+(currentVehicleDriverName||'Nav piešķirts')+'</b></p><p>Stāvoklis: <b>'+statusText+'</b></p><p class="muted">Šis telefons ir pastāvīgi piesaistīts šim evakuatoram.</p>';
 if('Notification' in window){const current=Notification.permission;const label=current==='granted'?'🔔 Paziņojumi ir atļauti':current==='denied'?'🔕 Paziņojumi ir bloķēti pārlūkā':'🔔 IESLĒGT PAZIŅOJUMUS';const disabled=current==='denied'?' disabled':'';document.getElementById('driverHead').innerHTML+=`<button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()"${disabled}>${label}</button>`;}
-document.getElementById('driverOrders').innerHTML=data.map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'}</h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${o.price||0}</b></p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new'?`<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>`:''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>';
+document.getElementById('driverOrders').innerHTML=data.map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'}</h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${o.price||0}</b></p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new' ? (currentVehicleWorkStatus==='on_line' && currentVehicleDriverId ? `<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>` : `<div class="notice">Šī mašīna pašlaik nevar pieņemt pasūtījumu: nav aktīva vadītāja vai mašīna nav uz līnijas.</div>`) : ''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>';
 }
 
 /* СОЗДАНИЕ ЗАКАЗА */
@@ -1033,7 +1033,17 @@ let call=await db.rpc('set_vehicle_driver',{p_vehicle_id:id,p_driver_id:did,p_co
 if(result?.needs_transfer){const ok=confirm(result.driver_name+' pašlaik ir uz '+result.old_vehicle_name+'.\n\nPārcelt '+result.driver_name+' uz šo mašīnu?');if(!ok){await loadVehicleWork();if(out)out.innerHTML='<div class="notice">Pārcelšana atcelta.</div>';return;}call=await db.rpc('set_vehicle_driver',{p_vehicle_id:id,p_driver_id:did,p_confirm_transfer:true});if(call.error){if(out)out.innerHTML='<div class="notice error">Neizdevās pārcelt vadītāju: '+call.error.message+'</div>';await loadVehicleWork();return;}}
 const finalStatus=did?'on_line':st;const u=await db.from('vehicles').update({work_status:finalStatus}).eq('id',id);if(u.error){if(out)out.innerHTML='<div class="notice error">Vadītājs saglabāts, bet statusu neizdevās saglabāt: '+u.error.message+'</div>';await loadVehicleWork();return;}if(out)out.innerHTML='<div class="notice">Mašīnas un vadītāja stāvoklis saglabāts.</div>';await loadVehicleWork();
 }
-async function deactivateDriver(id){const found=dispatcherDrivers.find(d=>Number(d.id)===Number(id));const name=found?.name||'Šis vadītājs';if(!confirm('Atzīmēt '+name+' kā neaktīvu/atlaistu? Vecie pasūtījumi tiks saglabāti.'))return;const vv=await db.from('vehicles').select('id').eq('current_driver_id',id).eq('active',true);if(vv.error){alert(vv.error.message);return;}if((vv.data||[]).length){const u=await db.from('vehicles').update({current_driver_id:null,work_status:'no_driver'}).eq('current_driver_id',id);if(u.error){alert(u.error.message);return;}}const r=await db.from('drivers').update({active:false}).eq('id',id);if(r.error){alert(r.error.message);return;}if(document.getElementById('vehicleWorkMsg'))document.getElementById('vehicleWorkMsg').innerHTML='<div class="notice">'+name+' atzīmēts kā neaktīvs. Vēsturiskie pasūtījumi saglabāti.</div>';await loadDrivers();await loadVehicleWork();}
+async function deactivateDriver(id){
+const found=dispatcherDrivers.find(d=>Number(d.id)===Number(id));const name=found?.name||'Šis vadītājs';
+if(!confirm('Atzīmēt '+name+' kā neaktīvu/atlaistu? Vecie pasūtījumi tiks saglabāti.'))return;
+const vv=await db.from('vehicles').select('id').eq('current_driver_id',id).eq('active',true);
+if(vv.error){alert(vv.error.message);return;}
+for(const vehicle of (vv.data||[])){const r=await db.rpc('set_vehicle_driver',{p_vehicle_id:vehicle.id,p_driver_id:null,p_confirm_transfer:false});if(r.error){alert('Neizdevās atbrīvot '+name+' no mašīnas: '+r.error.message);return;}}
+const r=await db.from('drivers').update({active:false}).eq('id',id);
+if(r.error){alert('Vadītājs no mašīnas atbrīvots, bet statusu neizdevās mainīt: '+r.error.message);return;}
+if(document.getElementById('vehicleWorkMsg'))document.getElementById('vehicleWorkMsg').innerHTML='<div class="notice">'+name+' atzīmēts kā neaktīvs. Vecie pasūtījumi saglabāti.</div>';await loadDrivers();await loadVehicleWork();
+}
+
 
 /* СПИСОК ЗАКАЗОВ */
 async function loadOrders(){
