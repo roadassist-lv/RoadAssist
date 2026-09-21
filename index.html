@@ -66,6 +66,17 @@ main{padding:12px}
 <section id="login" class="panel">
 <h2>Pieslēgties</h2>
 <div id="loginMsg"></div>
+<div style="margin-top:8px;text-align:center">
+<button id="forgotPasswordBtn" type="button" style="background:none;border:0;color:#2563eb;text-decoration:underline;cursor:pointer;padding:6px" onclick="forgotPassword()">AIZMIRSI PAROLI?</button>
+</div>
+
+<div id="passwordResetBox" class="panel hide" style="margin-top:12px">
+<h3>🔐 Jaunas paroles iestatīšana</h3>
+<label class="field">Jaunā parole<input id="newPassword" type="password" autocomplete="new-password"></label>
+<label class="field">Atkārtot jauno paroli<input id="newPassword2" type="password" autocomplete="new-password"></label>
+<button class="primary" style="width:100%;margin-top:10px" onclick="saveNewPassword()">SAGLABĀT JAUNO PAROLI</button>
+<div id="passwordResetMsg" style="margin-top:10px"></div>
+</div>
 
 <label class="field">
 E-pasts
@@ -415,6 +426,40 @@ document.getElementById('msg').innerHTML=
 t?`<div class="notice ${e?'error':''}">${t}</div>`:'';
 }
 
+
+async function forgotPassword(){
+const email=(document.getElementById('email').value||'').trim();
+if(!email){
+document.getElementById('loginMsg').innerHTML='<div class="notice error">Ievadi e-pastu, lai atjaunotu paroli.</div>';
+return;
+}
+const r=await db.auth.resetPasswordForEmail(email,{
+redirectTo:window.location.origin+window.location.pathname
+});
+if(r.error){
+document.getElementById('loginMsg').innerHTML='<div class="notice error">Neizdevās nosūtīt paroles atjaunošanas e-pastu: '+r.error.message+'</div>';
+return;
+}
+document.getElementById('loginMsg').innerHTML='<div class="notice">📧 Paroles atjaunošanas saite nosūtīta uz '+email+'. Pārbaudi e-pastu.</div>';
+}
+
+async function saveNewPassword(){
+const p1=document.getElementById('newPassword').value;
+const p2=document.getElementById('newPassword2').value;
+const box=document.getElementById('passwordResetMsg');
+if(p1.length<6){box.innerHTML='<div class="notice error">Parolei jābūt vismaz 6 rakstzīmēm.</div>';return;}
+if(p1!==p2){box.innerHTML='<div class="notice error">Paroles nesakrīt.</div>';return;}
+const r=await db.auth.updateUser({password:p1});
+if(r.error){box.innerHTML='<div class="notice error">Neizdevās nomainīt paroli: '+r.error.message+'</div>';return;}
+box.innerHTML='<div class="notice">✅ Parole veiksmīgi nomainīta.</div>';
+document.getElementById('newPassword').value='';
+document.getElementById('newPassword2').value='';
+setTimeout(()=>{
+document.getElementById('passwordResetBox').classList.add('hide');
+document.getElementById('login').classList.remove('hide');
+document.getElementById('loginMsg').innerHTML='<div class="notice">Parole veiksmīgi nomainīta. Tagad vari pieslēgties ar jauno paroli.</div>';
+},1200);
+}
 
 /* ВХОД */
 async function login(){
@@ -1895,8 +1940,18 @@ else await loadDriverOrders();
 }
 
 
+/* Paroles atjaunošanas režīms pēc Supabase e-pasta saites */
+db.auth.onAuthStateChange((event, session)=>{
+if(event==='PASSWORD_RECOVERY' && session){
+document.getElementById('login').classList.remove('hide');
+document.getElementById('app').classList.add('hide');
+document.getElementById('passwordResetBox').classList.remove('hide');
+document.getElementById('passwordResetBox').scrollIntoView({behavior:'smooth',block:'center'});
+}
+});
+
 /* ВАЖНО: ПРОВЕРКА СОХРАНЁННОЙ СЕССИИ */
-checkSession();
+if(!window.location.hash.includes('type=recovery')) checkSession();
 
 </script>
 
