@@ -1797,9 +1797,9 @@ return;
 }
 
 const data=(r.data||[]).filter(o=>{
-  const isFreeNew = o.status==='new' && o.driver_id===null;
-  const isMyOrder = Number(o.driver_id)===Number(driverId);
-  return isFreeNew || isMyOrder;
+  if(o.status==='completed') return false;
+  if(o.status==='new' && o.vehicle_id===null) return true;
+  return Number(o.vehicle_id)===Number(vehicleId);
 });
 
 document.getElementById('driverHead').innerHTML=
