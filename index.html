@@ -255,6 +255,8 @@ SAGLABĀT UN NOSŪTĪT VADĪTĀJAM
 </table>
 </div>
 
+<div id="completedOrdersBox" class="panel" style="margin-top:15px"></div>
+
 </div>
 </section>
 
@@ -1143,14 +1145,32 @@ function formatEuro(n){
   return Number(n||0).toFixed(2);
 }
 
+function toggleVehicleSalary(){
+  const details=document.getElementById('vehicleSalaryDetails');
+  const arrow=document.getElementById('vehicleSalaryArrow');
+  if(!details)return;
+
+  const open=details.style.display!=='none';
+  details.style.display=open?'none':'block';
+  if(arrow)arrow.textContent=open?'▼':'▲';
+}
+
 async function loadVehicleSalary(){
   const box=document.getElementById('vehicleSalaryBox');
   if(!box)return;
 
+  const header=
+    '<button type="button" onclick="toggleVehicleSalary()" '+
+    'style="width:100%;text-align:left;background:none;border:0;padding:0;cursor:pointer">'+
+    '<h3 style="margin:0">💰 Mana samaksa <span id="vehicleSalaryArrow" style="float:right">▼</span></h3>'+
+    '</button>';
+
   if(!currentVehicleDriverId){
     box.innerHTML=
-      '<h3 style="margin-top:0">💰 Mana samaksa</h3>'+
-      '<div class="notice">Vispirms izvēlies pašreizējo vadītāju šim evakuatoram.</div>';
+      header+
+      '<div id="vehicleSalaryDetails" style="display:none;margin-top:14px">'+
+      '<div class="notice">Vispirms izvēlies pašreizējo vadītāju šim evakuatoram.</div>'+
+      '</div>';
     return;
   }
 
@@ -1163,45 +1183,23 @@ async function loadVehicleSalary(){
 
   if(r.error){
     box.innerHTML=
-      '<h3 style="margin-top:0">💰 Mana samaksa</h3>'+
-      '<div class="notice error">Neizdevās ielādēt algas datus: '+r.error.message+'</div>';
+      header+
+      '<div id="vehicleSalaryDetails" style="display:none;margin-top:14px">'+
+      '<div class="notice error">Neizdevās ielādēt algas datus: '+r.error.message+'</div>'+
+      '</div>';
     return;
   }
 
   const orders=r.data||[];
   const now=new Date();
 
-  const todayStart=new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate()
-  );
-
-  const tomorrowStart=new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate()+1
-  );
-
-  const monthStart=new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    1
-  );
-
-  const nextMonthStart=new Date(
-    now.getFullYear(),
-    now.getMonth()+1,
-    1
-  );
+  const todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const tomorrowStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+  const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+  const nextMonthStart=new Date(now.getFullYear(),now.getMonth()+1,1);
 
   const summarize=(list)=>{
-    let dayKm=0;
-    let nightKm=0;
-    let dayPay=0;
-    let nightPay=0;
-    let tow=0;
-    let extra=0;
+    let dayKm=0,nightKm=0,dayPay=0,nightPay=0,tow=0,extra=0;
 
     list.forEach(o=>{
       const km=Number(o.kilometers||0);
@@ -1247,39 +1245,38 @@ async function loadVehicleSalary(){
   const today=summarize(todayOrders);
   const month=summarize(monthOrders);
 
-  box.innerHTML=`
-    <h3 style="margin-top:0">💰 Mana samaksa</h3>
-    <p class="muted">Vadītājs: <b>${currentVehicleDriverName||'—'}</b></p>
+  box.innerHTML=
+    header+
+    '<div id="vehicleSalaryDetails" style="display:none;margin-top:14px">'+
+    '<p class="muted">Vadītājs: <b>'+currentVehicleDriverName+'</b></p>'+
 
-    <h4 style="margin:14px 0 8px">Šodien</h4>
-    <div class="finance-grid">
-      <div class="finance-card">Pasūtījumi<br><b>${today.orders}</b></div>
-      <div class="finance-card">Dienas km<br><b>${formatKm(today.dayKm)}</b></div>
-      <div class="finance-card">Nakts / brīvdienu km<br><b>${formatKm(today.nightKm)}</b></div>
-      <div class="finance-card">Samaksa<br><b>€${formatEuro(today.totalPay)}</b></div>
-    </div>
+    '<h4 style="margin:14px 0 8px">Šodien</h4>'+
+    '<div class="finance-grid">'+
+      '<div class="finance-card">Pasūtījumi<br><b>'+today.orders+'</b></div>'+
+      '<div class="finance-card">Dienas km<br><b>'+formatKm(today.dayKm)+'</b></div>'+
+      '<div class="finance-card">Nakts / brīvdienu km<br><b>'+formatKm(today.nightKm)+'</b></div>'+
+      '<div class="finance-card">Samaksa<br><b>€'+formatEuro(today.totalPay)+'</b></div>'+
+    '</div>'+
 
-    <h4 style="margin:18px 0 8px">Šis mēnesis</h4>
-    <div class="finance-grid">
-      <div class="finance-card">Pasūtījumi<br><b>${month.orders}</b></div>
-      <div class="finance-card">Dienas km<br><b>${formatKm(month.dayKm)}</b></div>
-      <div class="finance-card">Nakts / brīvdienu km<br><b>${formatKm(month.nightKm)}</b></div>
-      <div class="finance-card">Kopā km<br><b>${formatKm(month.totalKm)}</b></div>
-    </div>
+    '<h4 style="margin:18px 0 8px">Šis mēnesis</h4>'+
+    '<div class="finance-grid">'+
+      '<div class="finance-card">Pasūtījumi<br><b>'+month.orders+'</b></div>'+
+      '<div class="finance-card">Dienas km<br><b>'+formatKm(month.dayKm)+'</b></div>'+
+      '<div class="finance-card">Nakts / brīvdienu km<br><b>'+formatKm(month.nightKm)+'</b></div>'+
+      '<div class="finance-card">Kopā km<br><b>'+formatKm(month.totalKm)+'</b></div>'+
+    '</div>'+
 
-    <div class="finance-grid" style="margin-top:10px">
-      <div class="finance-card">Dienas samaksa<br><b>€${formatEuro(month.dayPay)}</b></div>
-      <div class="finance-card">Nakts samaksa<br><b>€${formatEuro(month.nightPay)}</b></div>
-      <div class="finance-card">Ratiņi<br><b>${formatKm(month.tow)}</b></div>
-      <div class="finance-card">Kopā samaksa<br><b>€${formatEuro(month.totalPay)}</b></div>
-    </div>
+    '<div class="finance-grid" style="margin-top:10px">'+
+      '<div class="finance-card">Dienas samaksa<br><b>€'+formatEuro(month.dayPay)+'</b></div>'+
+      '<div class="finance-card">Nakts samaksa<br><b>€'+formatEuro(month.nightPay)+'</b></div>'+
+      '<div class="finance-card">Ratiņi<br><b>'+formatKm(month.tow)+'</b></div>'+
+      '<div class="finance-card">Kopā samaksa<br><b>€'+formatEuro(month.totalPay)+'</b></div>'+
+    '</div>'+
 
-    <p class="muted" style="margin-bottom:0">
-      Kopējais mēneša nobraukums: <b>${formatKm(month.totalKm)} km</b>.
-    </p>
-  `;
+    '<p class="muted" style="margin-bottom:0">Kopējais mēneša nobraukums: <b>'+
+      formatKm(month.totalKm)+' km</b>.</p>'+
+    '</div>';
 }
-
 
 /* ЗАКАЗЫ МАШИНЫ */
 async function loadVehicleOrders(){
@@ -1629,68 +1626,17 @@ if(document.getElementById('vehicleWorkMsg'))document.getElementById('vehicleWor
 
 
 /* СПИСОК ЗАКАЗОВ */
-async function loadOrders(){
-
-let r=await db
-.from('orders')
-.select(`
-id,
-client_type,
-car,
-pickup,
-destination,
-price,
-status,
-driver_id,
-vehicle_id,
-drivers(id,name),
-vehicles(id,name,plate)
-`)
-.order('id',{ascending:false});
-
-
-if(r.error){
-
-document.getElementById('rows').innerHTML=
-'<tr><td colspan="10">'+
-r.error.message+
-'</td></tr>';
-
-return;
-
-}
-
-
-document.getElementById('rows').innerHTML=
-(r.data||[])
-.map(o=>`
-
+function renderDispatcherOrderRow(o){
+  return `
 <tr>
-
 <td>${o.id}</td>
-
 <td>${o.client_type||'—'}</td>
-
 <td>${o.car||'—'}</td>
-
 <td>${o.pickup||'—'}</td>
-
 <td>${o.destination||'—'}</td>
-
-<td>
-${o.vehicles?
-o.vehicles.name+' — '+o.vehicles.plate:
-'—'}
-</td>
-
-<td>
-${o.drivers?
-o.drivers.name:
-'—'}
-</td>
-
+<td>${o.vehicles?o.vehicles.name+' — '+o.vehicles.plate:'—'}</td>
+<td>${o.drivers?o.drivers.name:'—'}</td>
 <td>€${o.price||0}</td>
-
 <td>
 ${
   o.status==='completed'
@@ -1710,17 +1656,76 @@ ${
   `
 }
 </td>
-
-<td>
-<span class="status status-${o.status}">
-${statusLv(o.status)}
-</span>
-</td>
-
+<td><span class="status status-${o.status}">${statusLv(o.status)}</span></td>
 </tr>
+`;
+}
 
-`).join('');
+function toggleCompletedOrders(){
+  const details=document.getElementById('completedOrdersDetails');
+  const arrow=document.getElementById('completedOrdersArrow');
+  if(!details)return;
 
+  const open=details.style.display!=='none';
+  details.style.display=open?'none':'block';
+  if(arrow)arrow.textContent=open?'▼':'▲';
+}
+
+async function loadOrders(){
+
+  let r=await db
+    .from('orders')
+    .select(`
+id,
+client_type,
+car,
+pickup,
+destination,
+price,
+status,
+driver_id,
+vehicle_id,
+drivers(id,name),
+vehicles(id,name,plate)
+`)
+    .order('id',{ascending:false});
+
+  if(r.error){
+    document.getElementById('rows').innerHTML=
+      '<tr><td colspan="10">'+r.error.message+'</td></tr>';
+    const box=document.getElementById('completedOrdersBox');
+    if(box)box.innerHTML='';
+    return;
+  }
+
+  const all=r.data||[];
+  const activeOrders=all.filter(o=>o.status!=='completed');
+  const completedOrders=all.filter(o=>o.status==='completed');
+
+  document.getElementById('rows').innerHTML=
+    activeOrders.map(renderDispatcherOrderRow).join('') ||
+    '<tr><td colspan="10" class="muted">Aktīvu pasūtījumu nav.</td></tr>';
+
+  const completedBox=document.getElementById('completedOrdersBox');
+
+  if(completedBox){
+    completedBox.innerHTML=
+      '<button type="button" onclick="toggleCompletedOrders()" '+
+      'style="width:100%;text-align:left;background:none;border:0;padding:0;cursor:pointer">'+
+      '<h3 style="margin:0">📁 Pabeigtie pasūtījumi ('+completedOrders.length+') '+
+      '<span id="completedOrdersArrow" style="float:right">▼</span></h3>'+
+      '</button>'+
+      '<div id="completedOrdersDetails" style="display:none;margin-top:14px">'+
+      (completedOrders.length
+        ? '<div style="overflow:auto"><table><thead><tr>'+
+          '<th>Nr.</th><th>Klients</th><th>Automašīna</th><th>No</th><th>Uz</th>'+
+          '<th>Evakuators</th><th>Vadītājs</th><th>Cena</th><th>Darbība</th><th>Statuss</th>'+
+          '</tr></thead><tbody>'+
+          completedOrders.map(renderDispatcherOrderRow).join('')+
+          '</tbody></table></div>'
+        : '<div class="muted">Pabeigtu pasūtījumu nav.</div>')+
+      '</div>';
+  }
 }
 
 
