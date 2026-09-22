@@ -247,6 +247,8 @@ SAGLABĀT UN NOSŪTĪT VADĪTĀJAM
 <th>Evakuators</th>
 <th>Vadītājs</th>
 <th>Cena</th>
+<th>Mūsu daļa</th>
+<th>Adakam</th>
 <th>Darbība</th>
 <th>Statuss</th>
 <th>Darbība</th>
@@ -871,11 +873,11 @@ async function loadSettlementPreview(){
     db.from('cash_expenses').select('amount,description,created_at').eq('vehicle_id',vid).gt('created_at',since).order('created_at',{ascending:false})
   ]);
   if(orders.error||expenses.error){out.innerHTML='<div class="notice error">Neizdevās ielādēt kasi: '+(orders.error?.message||expenses.error?.message)+'</div>';return;}
-  const totalReceived=(orders.data||[]).reduce((a,o)=>a+Number(o.our_share||0),0);
+  const totalReceived=(orders.data||[]).reduce((a,o)=>a+(o.our_share!==null&&o.our_share!==undefined?Number(o.our_share||0):Number(o.cash_received||0)-Number(o.partner_debt||0)),0);
   const totalExpenses=(expenses.data||[]).reduce((a,o)=>a+Number(o.amount||0),0);
-  const cash=Math.max(0,totalReceived-totalExpenses);
+  const cash=totalReceived-totalExpenses;
   const salary=(orders.data||[]).filter(o=>driverIdNow&&Number(o.driver_id)===Number(driverIdNow)).reduce((a,o)=>a+Number(o.driver_pay||0),0);
-  const company=Math.max(0,cash-salary);
+  const company=cash-salary;
   out.innerHTML=`<div class="panel"><h3 style="margin-top:0">💶 Kases aprēķins — ${vr.data.name||''} ${vr.data.plate||''}</h3><div class="cash-grid"><div class="cash-card">Mūsu daļa no klientu maksājumiem<br><b>€${totalReceived.toFixed(2)}</b></div><div class="cash-card">Izdevumi<br><b>−€${totalExpenses.toFixed(2)}</b></div><div class="cash-card">Kasē jābūt<br><b>€${cash.toFixed(2)}</b></div><div class="cash-card">Vadītāja samaksa<br><b>€${salary.toFixed(2)}</b></div><div class="cash-card">Uzņēmumam<br><b>€${company.toFixed(2)}</b></div><div class="cash-card">Kopā jānodod<br><b>€${cash.toFixed(2)}</b></div></div><div style="margin-top:12px"><b>Izdevumi:</b><br>${(expenses.data||[]).map(e=>`−€${Number(e.amount||0).toFixed(2)} — ${e.description||''}`).join('<br>')||'Nav'}</div><button class="green" style="margin-top:15px;width:100%" onclick="closeSettlement(${vid})">NODOT KASI UN AIZVĒRT NORĒĶINU</button></div>`;
 }
 
@@ -888,11 +890,11 @@ async function closeSettlement(vid){
   const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
   const [orders,expenses]=await Promise.all([db.from('orders').select('our_share,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount').eq('vehicle_id',vid).gt('created_at',since)]);
   if(orders.error||expenses.error){out.innerHTML='<div class="notice error">Neizdevās aprēķināt norēķinu.</div>';return;}
-  const received=(orders.data||[]).reduce((a,o)=>a+Number(o.our_share||0),0);
+  const received=(orders.data||[]).reduce((a,o)=>a+(o.our_share!==null&&o.our_share!==undefined?Number(o.our_share||0):Number(o.cash_received||0)-Number(o.partner_debt||0)),0);
   const exp=(expenses.data||[]).reduce((a,o)=>a+Number(o.amount||0),0);
-  const cash=Math.max(0,received-exp);
+  const cash=received-exp;
   const salary=(orders.data||[]).filter(o=>vr.data.current_driver_id&&Number(o.driver_id)===Number(vr.data.current_driver_id)).reduce((a,o)=>a+Number(o.driver_pay||0),0);
-  const company=Math.max(0,cash-salary);
+  const company=cash-salary;
   const ins=await db.from('cash_settlements').insert({vehicle_id:vid,driver_id:vr.data.current_driver_id||null,total_received:received,total_expenses:exp,cash_before_settlement:cash,driver_salary:salary,company_cash:company,total_handed:cash});
   if(ins.error){out.innerHTML='<div class="notice error">Neizdevās aizvērt norēķinu: '+ins.error.message+'</div>';return;}
   out.innerHTML='<div class="notice">✅ Norēķins aizvērts. Saņemts: €'+received.toFixed(2)+', izdevumi: €'+exp.toFixed(2)+', vadītājam: €'+salary.toFixed(2)+', uzņēmumam: €'+company.toFixed(2)+'. Jaunais periods sākas no nulles.</div>';
@@ -916,12 +918,12 @@ async function loadVehicleCash(){
   const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
   const [orders,expenses]=await Promise.all([db.from('orders').select('id,our_share,driver_pay,driver_id,completed_at').eq('vehicle_id',vehicleId).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount,description,created_at').eq('vehicle_id',vehicleId).gt('created_at',since).order('created_at',{ascending:false})]);
   if(orders.error||expenses.error){box.innerHTML='<div class="notice error">Kasi neizdevās ielādēt: '+(orders.error?.message||expenses.error?.message)+'</div>';return;}
-  const received=(orders.data||[]).reduce((a,o)=>a+Number(o.our_share||0),0);
+  const received=(orders.data||[]).reduce((a,o)=>a+(o.our_share!==null&&o.our_share!==undefined?Number(o.our_share||0):Number(o.cash_received||0)-Number(o.partner_debt||0)),0);
   const exp=(expenses.data||[]).reduce((a,o)=>a+Number(o.amount||0),0);
-  const cash=Math.max(0,received-exp);
+  const cash=received-exp;
   const salary=(orders.data||[]).filter(o=>currentVehicleDriverId&&Number(o.driver_id)===Number(currentVehicleDriverId)).reduce((a,o)=>a+Number(o.driver_pay||0),0);
-  const company=Math.max(0,cash-salary);
-  box.innerHTML=`<details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">💶 Kase</summary><div class="panel" style="margin-top:10px;border:2px solid #dfe4e8"><div class="cash-grid"><div class="cash-card">Mūsu daļa no klientu maksājumiem<br><b>€${received.toFixed(2)}</b></div><div class="cash-card">Izdevumi<br><b>−€${exp.toFixed(2)}</b></div><div class="cash-card">Kasei jābūt<br><b>€${cash.toFixed(2)}</b></div><div class="cash-card">Mana samaksa<br><b>€${salary.toFixed(2)}</b></div><div class="cash-card">Uzņēmumam pēc algas<br><b>€${company.toFixed(2)}</b></div></div><h4>Pievienot izdevumu</h4><div class="form"><label class="field">Summa, €<input id="cashExpenseAmount" type="number" min="0" step="0.01"></label><label class="field">Par ko?<input id="cashExpenseDescription" placeholder="Degviela, spuldzīte utt."></label></div><button class="primary" style="margin-top:10px;width:100%" onclick="addCashExpense()">PIEVIENOT IZDEVUMU</button><div id="cashExpenseMsg" style="margin-top:8px"></div><div style="margin-top:10px"><b>Šī perioda izdevumi:</b><br>${(expenses.data||[]).map(e=>`−€${Number(e.amount||0).toFixed(2)} — ${e.description||''}`).join('<br>')||'Nav'}</div></div></details>`;
+  const company=cash-salary;
+  box.innerHTML=`<details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">💶 Kase</summary><div class="panel" style="margin-top:10px;border:2px solid #dfe4e8"><div class="cash-grid"><div class="cash-card">Mūsu daļa no klientu maksājumiem<br><b>€${received.toFixed(2)}</b></div><div class="cash-card">Izdevumi<br><b>−€${exp.toFixed(2)}</b></div><div class="cash-card">Kasei jābūt<br><b>€${cash.toFixed(2)}</b></div><div class="cash-card">Mana samaksa<br><b>€${salary.toFixed(2)}</b></div><div class="cash-card">Uzņēmumam pēc algas<br><b>€${company.toFixed(2)}</b></div></div><div class="muted" style="margin-top:10px">Adakam pienākošā daļa kasē netiek ieskaitīta — kasē tiek skaitīta tikai mūsu daļa.</div><h4>Pievienot izdevumu</h4><div class="form"><label class="field">Summa, €<input id="cashExpenseAmount" type="number" min="0" step="0.01"></label><label class="field">Par ko?<input id="cashExpenseDescription" placeholder="Degviela, spuldzīte utt."></label></div><button class="primary" style="margin-top:10px;width:100%" onclick="addCashExpense()">PIEVIENOT IZDEVUMU</button><div id="cashExpenseMsg" style="margin-top:8px"></div><div style="margin-top:10px"><b>Šī perioda izdevumi:</b><br>${(expenses.data||[]).map(e=>`−€${Number(e.amount||0).toFixed(2)} — ${e.description||''}`).join('<br>')||'Nav'}</div></div></details>`;
 }
 
 /* ДОЛГ АДАКУ */
@@ -1384,7 +1386,7 @@ async function loadVehicleSalary(){
 /* ЗАКАЗЫ МАШИНЫ */
 async function loadVehicleOrders(){
 const vr=await db.from('vehicles').select('current_driver_id,work_status').eq('id',vehicleId).single();if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';
-const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,drivers(id,name)').order('id',{ascending:false});if(r.error){document.getElementById('driverHead').innerHTML='<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div><h2>Pasūtījumi</h2><div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';document.getElementById('driverOrders').innerHTML='';return;}
+const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,cash_received,our_share,partner_debt,customer_payment_comment,drivers(id,name)').order('id',{ascending:false});if(r.error){document.getElementById('driverHead').innerHTML='<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div><h2>Pasūtījumi</h2><div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>';document.getElementById('driverOrders').innerHTML='';return;}
 const data=(r.data||[]).filter(o=>{
   if(o.status==='completed') return false;
   if(o.status==='new' && o.vehicle_id===null) return true;
@@ -1395,7 +1397,7 @@ await renderVehiclePushStatus();
 await loadVehicleCash();
 await loadVehicleAdakDebt();
 await loadVehicleSalary();
-document.getElementById('driverOrders').innerHTML=data.map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'}</h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${o.price||0}</b></p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new' ? (currentVehicleWorkStatus==='on_line' && currentVehicleDriverId ? `<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>` : `<div class="notice">Šī mašīna pašlaik nevar pieņemt pasūtījumu: vispirms izvēlies vadītāju šī telefona augšdaļā un pārliecinies, ka mašīna ir uz līnijas.</div>`) : ''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label><label class="field">Klienta samaksāts, €<input id="pay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.cash_received||o.price||0).toFixed(2)}"></label><label class="field">Piezīme par samaksu<textarea id="payComment_${o.id}">${o.customer_payment_comment||''}</textarea></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>';
+document.getElementById('driverOrders').innerHTML=data.map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'}</h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${Number(o.price||0).toFixed(2)}</b></p><p>Mūsu daļa: <b>€${Number(o.our_share||0).toFixed(2)}</b> · Adakam: <b>€${Number(o.partner_debt||0).toFixed(2)}</b></p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new' ? (currentVehicleWorkStatus==='on_line' && currentVehicleDriverId ? `<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>` : `<div class="notice">Šī mašīna pašlaik nevar pieņemt pasūtījumu: vispirms izvēlies vadītāju šī telefona augšdaļā un pārliecinies, ka mašīna ir uz līnijas.</div>`) : ''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" value="0"></label><label class="field">Klienta samaksāts, €<input id="pay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.cash_received||o.price||0).toFixed(2)}"></label><label class="field">Piezīme par samaksu<textarea id="payComment_${o.id}">${o.customer_payment_comment||''}</textarea></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>';
 }
 
 /* СОЗДАНИЕ ЗАКАЗА */
@@ -1451,7 +1453,7 @@ return;
 }
 
 
-let partnerDebt=Math.max(0,cash-our);
+let partnerDebt=cash-our;
 
 
 /* ПОЛУЧАЕМ НАЗВАНИЕ КЛИЕНТА */
@@ -1610,12 +1612,12 @@ if(document.getElementById('vehicleWorkMsg'))document.getElementById('vehicleWor
 /* СПИСОК ЗАКАЗОВ */
 async function loadOrders(){
   const r=await db.from('orders').select(`id,client_type,car,pickup,destination,price,status,driver_id,vehicle_id,cash_received,customer_payment_comment,our_share,partner_debt,drivers(id,name),vehicles(id,name,plate)`).order('id',{ascending:false});
-  if(r.error){document.getElementById('rows').innerHTML='<tr><td colspan="11">'+r.error.message+'</td></tr>';return;}
+  if(r.error){document.getElementById('rows').innerHTML='<tr><td colspan="13">'+r.error.message+'</td></tr>';return;}
   const all=r.data||[];
   const active=all.filter(o=>o.status!=='completed');
   const completed=all.filter(o=>o.status==='completed');
-  const row=o=>`<tr><td>${o.id}</td><td>${o.client_type||'—'}</td><td>${o.car||'—'}</td><td>${o.pickup||'—'}</td><td>${o.destination||'—'}</td><td>${o.vehicles?o.vehicles.name+' — '+o.vehicles.plate:'—'}</td><td>${o.drivers?o.drivers.name:'—'}</td><td>€${Number(o.price||0).toFixed(2)}</td><td>${o.status==='completed'?'<span class="muted">Pabeigts — mainīt nevar</span>':`<select id="assignDriver_${o.id}" style="min-width:150px;padding:7px;border:1px solid #ccd5db;border-radius:7px"><option value="">Vadītājs nav piešķirts</option>${dispatcherDrivers.map(d=>`<option value="${d.id}" ${o.drivers&&Number(o.drivers.id)===Number(d.id)?'selected':''}>${d.name}</option>`).join('')}</select><select id="assignVehicle_${o.id}" style="min-width:180px;padding:7px;border:1px solid #ccd5db;border-radius:7px;margin-top:5px"><option value="">Evakuators nav piešķirts</option>${dispatcherVehicles.map(v=>`<option value="${v.id}" ${o.vehicles&&Number(o.vehicles.id)===Number(v.id)?'selected':''}>${v.name} — ${v.plate}</option>`).join('')}</select><button class="green" style="margin-top:5px" onclick="assignOrder(${o.id})">${o.driver_id||o.vehicle_id?'SAGLABĀT IZMAIŅAS':'PIEVIENOT'}</button>`}</td><td><span class="status status-${o.status}">${statusLv(o.status)}</span></td></tr>`;
-  document.getElementById('rows').innerHTML=active.map(row).join('')||'<tr><td colspan="11">Aktīvu pasūtījumu nav.</td></tr>';
+  const row=o=>`<tr><td>${o.id}</td><td>${o.client_type||'—'}</td><td>${o.car||'—'}</td><td>${o.pickup||'—'}</td><td>${o.destination||'—'}</td><td>${o.vehicles?o.vehicles.name+' — '+o.vehicles.plate:'—'}</td><td>${o.drivers?o.drivers.name:'—'}</td><td>€${Number(o.price||0).toFixed(2)}</td><td>€${Number(o.our_share||0).toFixed(2)}</td><td><b>€${Number(o.partner_debt||0).toFixed(2)}</b></td><td>${o.status==='completed'?'<span class="muted">Pabeigts — mainīt nevar</span>':`<select id="assignDriver_${o.id}" style="min-width:150px;padding:7px;border:1px solid #ccd5db;border-radius:7px"><option value="">Vadītājs nav piešķirts</option>${dispatcherDrivers.map(d=>`<option value="${d.id}" ${o.drivers&&Number(o.drivers.id)===Number(d.id)?'selected':''}>${d.name}</option>`).join('')}</select><select id="assignVehicle_${o.id}" style="min-width:180px;padding:7px;border:1px solid #ccd5db;border-radius:7px;margin-top:5px"><option value="">Evakuators nav piešķirts</option>${dispatcherVehicles.map(v=>`<option value="${v.id}" ${o.vehicles&&Number(o.vehicles.id)===Number(v.id)?'selected':''}>${v.name} — ${v.plate}</option>`).join('')}</select><button class="green" style="margin-top:5px" onclick="assignOrder(${o.id})">${o.driver_id||o.vehicle_id?'SAGLABĀT IZMAIŅAS':'PIEVIENOT'}</button>`}</td><td><span class="status status-${o.status}">${statusLv(o.status)}</span></td></tr>`;
+  document.getElementById('rows').innerHTML=active.map(row).join('')||'<tr><td colspan="13">Aktīvu pasūtījumu nav.</td></tr>';
   const old=document.getElementById('completedOrdersBox');
   if(old)old.remove();
   const host=document.querySelector('#orders .panel');
@@ -2047,11 +2049,11 @@ async function finish(id){
   if(current.error||!current.data){alert(current.error?.message||'Pasūtījums nav atrasts.');return;}
   const now=new Date();const dateKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   const holidays=[];const day=now.getDay();const weekend=day===0||day===6;const holiday=holidays.includes(dateKey);const hour=now.getHours();const night=weekend||holiday||hour>=22||hour<7;const tariff=night?'Nakts':'Diena';const base=night?15:10;const rate=night?.15:.10;const pay=base+km*rate+rt*5;
-  let q=db.from('orders').update({status:'completed',completed_at:now.toISOString(),kilometers:km,tow_ins:rt,driver_pay:pay,cash_received:actual,customer_payment_comment:comment||null,partner_debt:Math.max(0,actual-Number(current.data.our_share||0))}).eq('id',id);
+  let q=db.from('orders').update({status:'completed',completed_at:now.toISOString(),kilometers:km,tow_ins:rt,driver_pay:pay,cash_received:actual,customer_payment_comment:comment||null,partner_debt:actual-Number(current.data.our_share||0)}).eq('id',id);
   if(sessionMode==='vehicle')q=q.eq('vehicle_id',vehicleId);else if(sessionMode==='driver')q=q.eq('driver_id',driverId);else{alert('Nav atļauts.');return;}
   const r=await q;if(r.error){alert(r.error.message);return;}
-  const adakDebt=Math.max(0,actual-Number(current.data.our_share||0));
-  if(adakDebt>0){
+  const adakDebt=actual-Number(current.data.our_share||0);
+  if(adakDebt!==0){
     const ar=await db.rpc('add_adak_order_debt',{p_order_id:Number(id),p_vehicle_id:Number(vehicleId),p_driver_id:currentVehicleDriverId?Number(currentVehicleDriverId):(current.data.driver_id?Number(current.data.driver_id):null),p_amount:adakDebt,p_note:'Parāds no pabeigta pasūtījuma'});
     if(ar.error){alert('Pasūtījums pabeigts, bet Adaka parādu neizdevās pievienot: '+ar.error.message);}
   }
