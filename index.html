@@ -1059,7 +1059,7 @@ await loadDriverOrders();
 async function initVehicle(){
 const vr=await db.from('vehicles').select('id,name,plate,current_driver_id,work_status').eq('id',vehicleId).single();if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';document.getElementById('roleLabel').textContent='🚛 '+vehicleName+' — '+vehiclePlate;if('serviceWorker' in navigator){try{await navigator.serviceWorker.register('./sw.js');}catch(e){console.warn('Service Worker:',e);}}document.getElementById('dispatcherTabs').style.display='none';document.getElementById('new').classList.remove('active');document.getElementById('orders').classList.remove('active');document.getElementById('driverView').classList.add('active');await loadVehicleOrders();
   if(vehicleRefreshTimer) clearInterval(vehicleRefreshTimer);
-  vehicleRefreshTimer=setInterval(async()=>{ if(sessionMode==='vehicle'){ const ui=captureVehicleUiState(); await loadVehicleOrders(ui); await loadVehicleSalary(); await loadVehicleCash(); restoreVehicleUiState(ui); } },10000);
+  vehicleRefreshTimer=setInterval(async()=>{ if(sessionMode==='vehicle'){ const ui=captureVehicleUiState(); await loadVehicleOrders(ui); await loadVehicleSalary(); await loadVehicleCash(); restoreVehicleUiState(ui); } },60000);
 }
 
 
