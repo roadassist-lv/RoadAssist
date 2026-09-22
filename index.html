@@ -867,16 +867,16 @@ async function loadSettlementPreview(){
   const last=await db.from('cash_settlements').select('closed_at').eq('vehicle_id',vid).order('closed_at',{ascending:false}).limit(1).maybeSingle();
   const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
   const [orders,expenses]=await Promise.all([
-    db.from('orders').select('cash_received,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),
+    db.from('orders').select('our_share,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),
     db.from('cash_expenses').select('amount,description,created_at').eq('vehicle_id',vid).gt('created_at',since).order('created_at',{ascending:false})
   ]);
   if(orders.error||expenses.error){out.innerHTML='<div class="notice error">Neizdevās ielādēt kasi: '+(orders.error?.message||expenses.error?.message)+'</div>';return;}
-  const totalReceived=(orders.data||[]).reduce((a,o)=>a+Number(o.cash_received||0),0);
+  const totalReceived=(orders.data||[]).reduce((a,o)=>a+Number(o.our_share||0),0);
   const totalExpenses=(expenses.data||[]).reduce((a,o)=>a+Number(o.amount||0),0);
   const cash=Math.max(0,totalReceived-totalExpenses);
   const salary=(orders.data||[]).filter(o=>driverIdNow&&Number(o.driver_id)===Number(driverIdNow)).reduce((a,o)=>a+Number(o.driver_pay||0),0);
   const company=Math.max(0,cash-salary);
-  out.innerHTML=`<div class="panel"><h3 style="margin-top:0">💶 Kases aprēķins — ${vr.data.name||''} ${vr.data.plate||''}</h3><div class="cash-grid"><div class="cash-card">Saņemts no klientiem<br><b>€${totalReceived.toFixed(2)}</b></div><div class="cash-card">Izdevumi<br><b>−€${totalExpenses.toFixed(2)}</b></div><div class="cash-card">Kasē jābūt<br><b>€${cash.toFixed(2)}</b></div><div class="cash-card">Vadītāja samaksa<br><b>€${salary.toFixed(2)}</b></div><div class="cash-card">Uzņēmumam<br><b>€${company.toFixed(2)}</b></div><div class="cash-card">Kopā jānodod<br><b>€${cash.toFixed(2)}</b></div></div><div style="margin-top:12px"><b>Izdevumi:</b><br>${(expenses.data||[]).map(e=>`−€${Number(e.amount||0).toFixed(2)} — ${e.description||''}`).join('<br>')||'Nav'}</div><button class="green" style="margin-top:15px;width:100%" onclick="closeSettlement(${vid})">NODOT KASI UN AIZVĒRT NORĒĶINU</button></div>`;
+  out.innerHTML=`<div class="panel"><h3 style="margin-top:0">💶 Kases aprēķins — ${vr.data.name||''} ${vr.data.plate||''}</h3><div class="cash-grid"><div class="cash-card">Mūsu daļa no klientu maksājumiem<br><b>€${totalReceived.toFixed(2)}</b></div><div class="cash-card">Izdevumi<br><b>−€${totalExpenses.toFixed(2)}</b></div><div class="cash-card">Kasē jābūt<br><b>€${cash.toFixed(2)}</b></div><div class="cash-card">Vadītāja samaksa<br><b>€${salary.toFixed(2)}</b></div><div class="cash-card">Uzņēmumam<br><b>€${company.toFixed(2)}</b></div><div class="cash-card">Kopā jānodod<br><b>€${cash.toFixed(2)}</b></div></div><div style="margin-top:12px"><b>Izdevumi:</b><br>${(expenses.data||[]).map(e=>`−€${Number(e.amount||0).toFixed(2)} — ${e.description||''}`).join('<br>')||'Nav'}</div><button class="green" style="margin-top:15px;width:100%" onclick="closeSettlement(${vid})">NODOT KASI UN AIZVĒRT NORĒĶINU</button></div>`;
 }
 
 async function closeSettlement(vid){
@@ -886,9 +886,9 @@ async function closeSettlement(vid){
   if(vr.error){out.innerHTML='<div class="notice error">'+vr.error.message+'</div>';return;}
   const last=await db.from('cash_settlements').select('closed_at').eq('vehicle_id',vid).order('closed_at',{ascending:false}).limit(1).maybeSingle();
   const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
-  const [orders,expenses]=await Promise.all([db.from('orders').select('cash_received,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount').eq('vehicle_id',vid).gt('created_at',since)]);
+  const [orders,expenses]=await Promise.all([db.from('orders').select('our_share,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount').eq('vehicle_id',vid).gt('created_at',since)]);
   if(orders.error||expenses.error){out.innerHTML='<div class="notice error">Neizdevās aprēķināt norēķinu.</div>';return;}
-  const received=(orders.data||[]).reduce((a,o)=>a+Number(o.cash_received||0),0);
+  const received=(orders.data||[]).reduce((a,o)=>a+Number(o.our_share||0),0);
   const exp=(expenses.data||[]).reduce((a,o)=>a+Number(o.amount||0),0);
   const cash=Math.max(0,received-exp);
   const salary=(orders.data||[]).filter(o=>vr.data.current_driver_id&&Number(o.driver_id)===Number(vr.data.current_driver_id)).reduce((a,o)=>a+Number(o.driver_pay||0),0);
@@ -914,14 +914,14 @@ async function loadVehicleCash(){
   const box=document.getElementById('vehicleCashBox'); if(!box)return;
   const last=await db.from('cash_settlements').select('closed_at').eq('vehicle_id',vehicleId).order('closed_at',{ascending:false}).limit(1).maybeSingle();
   const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
-  const [orders,expenses]=await Promise.all([db.from('orders').select('id,cash_received,driver_pay,driver_id,completed_at').eq('vehicle_id',vehicleId).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount,description,created_at').eq('vehicle_id',vehicleId).gt('created_at',since).order('created_at',{ascending:false})]);
+  const [orders,expenses]=await Promise.all([db.from('orders').select('id,our_share,driver_pay,driver_id,completed_at').eq('vehicle_id',vehicleId).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount,description,created_at').eq('vehicle_id',vehicleId).gt('created_at',since).order('created_at',{ascending:false})]);
   if(orders.error||expenses.error){box.innerHTML='<div class="notice error">Kasi neizdevās ielādēt: '+(orders.error?.message||expenses.error?.message)+'</div>';return;}
-  const received=(orders.data||[]).reduce((a,o)=>a+Number(o.cash_received||0),0);
+  const received=(orders.data||[]).reduce((a,o)=>a+Number(o.our_share||0),0);
   const exp=(expenses.data||[]).reduce((a,o)=>a+Number(o.amount||0),0);
   const cash=Math.max(0,received-exp);
   const salary=(orders.data||[]).filter(o=>currentVehicleDriverId&&Number(o.driver_id)===Number(currentVehicleDriverId)).reduce((a,o)=>a+Number(o.driver_pay||0),0);
   const company=Math.max(0,cash-salary);
-  box.innerHTML=`<details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">💶 Kase</summary><div class="panel" style="margin-top:10px;border:2px solid #dfe4e8"><div class="cash-grid"><div class="cash-card">Saņemts no klientiem<br><b>€${received.toFixed(2)}</b></div><div class="cash-card">Izdevumi<br><b>−€${exp.toFixed(2)}</b></div><div class="cash-card">Kasei jābūt<br><b>€${cash.toFixed(2)}</b></div><div class="cash-card">Mana samaksa<br><b>€${salary.toFixed(2)}</b></div><div class="cash-card">Uzņēmumam pēc algas<br><b>€${company.toFixed(2)}</b></div></div><h4>Pievienot izdevumu</h4><div class="form"><label class="field">Summa, €<input id="cashExpenseAmount" type="number" min="0" step="0.01"></label><label class="field">Par ko?<input id="cashExpenseDescription" placeholder="Degviela, spuldzīte utt."></label></div><button class="primary" style="margin-top:10px;width:100%" onclick="addCashExpense()">PIEVIENOT IZDEVUMU</button><div id="cashExpenseMsg" style="margin-top:8px"></div><div style="margin-top:10px"><b>Šī perioda izdevumi:</b><br>${(expenses.data||[]).map(e=>`−€${Number(e.amount||0).toFixed(2)} — ${e.description||''}`).join('<br>')||'Nav'}</div></div></details>`;
+  box.innerHTML=`<details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">💶 Kase</summary><div class="panel" style="margin-top:10px;border:2px solid #dfe4e8"><div class="cash-grid"><div class="cash-card">Mūsu daļa no klientu maksājumiem<br><b>€${received.toFixed(2)}</b></div><div class="cash-card">Izdevumi<br><b>−€${exp.toFixed(2)}</b></div><div class="cash-card">Kasei jābūt<br><b>€${cash.toFixed(2)}</b></div><div class="cash-card">Mana samaksa<br><b>€${salary.toFixed(2)}</b></div><div class="cash-card">Uzņēmumam pēc algas<br><b>€${company.toFixed(2)}</b></div></div><h4>Pievienot izdevumu</h4><div class="form"><label class="field">Summa, €<input id="cashExpenseAmount" type="number" min="0" step="0.01"></label><label class="field">Par ko?<input id="cashExpenseDescription" placeholder="Degviela, spuldzīte utt."></label></div><button class="primary" style="margin-top:10px;width:100%" onclick="addCashExpense()">PIEVIENOT IZDEVUMU</button><div id="cashExpenseMsg" style="margin-top:8px"></div><div style="margin-top:10px"><b>Šī perioda izdevumi:</b><br>${(expenses.data||[]).map(e=>`−€${Number(e.amount||0).toFixed(2)} — ${e.description||''}`).join('<br>')||'Nav'}</div></div></details>`;
 }
 
 /* ДОЛГ АДАКУ */
