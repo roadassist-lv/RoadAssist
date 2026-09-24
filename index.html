@@ -101,6 +101,9 @@ PIESLĒGTIES
 <button class="tab active" onclick="show('new',this)">Jauns pasūtījums</button>
 <button class="tab" onclick="show('orders',this)">Pasūtījumi</button>
 <button class="tab" onclick="show('finance',this)">Vadītāju samaksa</button>
+<button class="tab" onclick="show('shiftSettlement',this)">Maiņas norēķins</button>
+<button class="tab" onclick="show('dispatcherCash',this)">Dispečera kase</button>
+<button class="tab" onclick="show('adakScreen',this)">Adak</button>
 <button class="tab" onclick="show('drivers',this)">Vadītāji</button>
 </div>
 
@@ -283,30 +286,43 @@ Līdz
 <input id="payTo" type="date">
 </label>
 
-<label class="field">
-Evakuators / kase
-<select id="settleVehicle" onchange="loadSettlementPreview()"></select>
-</label>
-
 </div>
 
 <button class="btn green" style="margin-top:12px" onclick="loadDriverPay()">
 APRĒĶINĀT
 </button>
 
-<details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">Mana samaksa</summary><div id="payResult" style="margin-top:15px"></div></details>
-<details open style="margin-top:15px">
-<summary style="cursor:pointer;font-weight:700">💶 Maiņas norēķins / смена</summary>
-<div class="muted" style="margin:10px 0">Izvēlies evakuatoru augstāk. Šeit dispečers pārbauda kasi, izdevumus un vadītāja algu, pieņem uzņēmuma naudu un aizver maiņu.</div>
-<div id="settlementResult"><div class="notice">Izvēlies evakuatoru laukā “Evakuators / kase”.</div></div>
-</details>
-<details style="margin-top:15px" ontoggle="if(this.open) loadDispatcherCashControl()">
-<summary style="cursor:pointer;font-weight:700">🏦 Dispečera kase / vadības kontrole</summary>
-<div id="dispatcherCashControl" style="margin-top:15px">Atver sadaļu, lai ielādētu...</div>
-</details>
-<details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">🤝 Parādi Adakam</summary><div id="adakDebtDispatcher" style="margin-top:15px">Ielādē...</div></details>
+<div id="payResult" style="margin-top:15px"></div>
 </div>
 
+</section>
+
+<section id="shiftSettlement" class="screen">
+<div class="panel">
+<h2>Maiņas norēķins</h2>
+<p class="muted">Dispečers pārbauda vadītāja maiņas lapu. Maiņa netiek aizvērta, kamēr dispečers nav apstiprinājis, ka nauda faktiski saņemta no vadītāja.</p>
+<div class="form">
+<label class="field">Evakuators / kase
+<select id="settleVehicle" onchange="loadSettlementPreview()"></select>
+</label>
+</div>
+<div id="settlementResult" style="margin-top:15px"><div class="notice">Izvēlies evakuatoru.</div></div>
+</div>
+</section>
+
+<section id="dispatcherCash" class="screen">
+<div class="panel">
+<h2>Dispečera kase</h2>
+<p class="muted">Šeit vadība redz, cik dispečers ir saņēmis no slēgtajām maiņām, cik nodevis vadībai un cik naudai vēl jābūt pie dispečera.</p>
+<div id="dispatcherCashControl">Ielādē...</div>
+</div>
+</section>
+
+<section id="adakScreen" class="screen">
+<div class="panel">
+<h2>Adak</h2>
+<div id="adakDebtDispatcher">Ielādē...</div>
+</div>
 </section>
 
 <section id="drivers" class="screen">
@@ -410,6 +426,9 @@ if(b)b.classList.add('active');
 
 if(id==='orders')loadOrders();
 if(id==='drivers')loadDrivers();
+if(id==='shiftSettlement'){ loadSettlementVehicles(); }
+if(id==='dispatcherCash')loadDispatcherCashControl();
+if(id==='adakScreen')loadAdakDebtDispatcher();
 }
 
 
@@ -862,6 +881,16 @@ Nodots uzņēmumam<br>
 
 
 /* КАССА / ЗАКРЫТИЕ РАСЧЁТА */
+async function loadSettlementVehicles(){
+  const el=document.getElementById('settleVehicle'); if(!el)return;
+  const previous=el.value;
+  const r=await db.from('vehicles').select('id,name,plate').eq('active',true).order('id');
+  if(r.error){document.getElementById('settlementResult').innerHTML='<div class="notice error">'+r.error.message+'</div>';return;}
+  el.innerHTML='<option value="">Izvēlies evakuatoru</option>'+(r.data||[]).map(x=>`<option value="${x.id}">${x.name} — ${x.plate}</option>`).join('');
+  if(previous) el.value=previous;
+  if(el.value) loadSettlementPreview();
+}
+
 async function getShiftData(vid){
   const vr=await db.from('vehicles').select('id,name,plate,current_driver_id').eq('id',vid).single();
   if(vr.error) throw vr.error;
@@ -912,12 +941,12 @@ async function loadSettlementPreview(){
     </div>
     <details style="margin-top:12px"><summary><b>Pasūtījumi (${s.orders.length})</b></summary><div style="overflow:auto"><table><thead><tr><th>Laiks</th><th>Klients</th><th>Apmaksa</th><th>Mūsu daļa</th><th>Alga</th></tr></thead><tbody>${orderRows||'<tr><td colspan="5">Nav</td></tr>'}</tbody></table></div></details>
     <details style="margin-top:12px"><summary><b>Izdevumi (${s.expenses.length})</b></summary><div style="overflow:auto"><table><thead><tr><th>Laiks</th><th>Apraksts</th><th>Apmaksa</th><th>Summa</th></tr></thead><tbody>${expenseRows||'<tr><td colspan="4">Nav</td></tr>'}</tbody></table></div></details>
-    <button class="green" style="margin-top:15px;width:100%" onclick="closeSettlement(${vid})">PIEŅEMT €${s.toDispatcher.toFixed(2)} UN AIZVĒRT MAIŅU</button></div>`;
+    <button class="green" style="margin-top:15px;width:100%" onclick="closeSettlement(${vid})">PIEŅĒMU €${s.toDispatcher.toFixed(2)} NO VADĪTĀJA</button></div>`;
   }catch(e){out.innerHTML='<div class="notice error">Neizdevās ielādēt maiņas lapu: '+(e.message||e)+'</div>';}
 }
 
 async function closeSettlement(vid){
-  if(!confirm('Apstiprināt maiņas lapu, pieņemt naudu dispečera kasē un aizvērt vadītāja norēķinu?'))return;
+  if(!confirm('Apstiprināt, ka dispečers faktiski saņēma šo naudu no vadītāja? Pēc tam maiņa tiks aizvērta.'))return;
   const out=document.getElementById('settlementResult');
   try{
     const s=await getShiftData(vid);
@@ -947,7 +976,7 @@ async function loadDispatcherCashControl(){
   ]);
   if(txr.error||sr.error){box.innerHTML='<div class="notice error">'+(txr.error?.message||sr.error?.message)+'</div>';return;}
   const tx=txr.data||[], settlements=sr.data||[], vehicles=vr.data||[], drivers=dr.data||[];
-  const received=tx.filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
+  const received=settlements.reduce((a,x)=>a+Number(x.company_cash||0),0);
   const handed=tx.filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
   const balance=received-handed;
   box.innerHTML=`<div class="cash-grid">
@@ -969,9 +998,12 @@ async function handCashToOwner(){
   const amount=Number(document.getElementById('ownerCashAmount')?.value||0);
   const note=(document.getElementById('ownerCashNote')?.value||'').trim();
   if(!amount||amount<=0){alert('Ievadi summu.');return;}
-  const txr=await db.from('dispatcher_cash_transactions').select('tx_type,amount');
-  if(txr.error){alert(txr.error.message);return;}
-  const received=(txr.data||[]).filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
+  const [txr,sr]=await Promise.all([
+    db.from('dispatcher_cash_transactions').select('tx_type,amount'),
+    db.from('cash_settlements').select('company_cash')
+  ]);
+  if(txr.error||sr.error){alert(txr.error?.message||sr.error?.message);return;}
+  const received=(sr.data||[]).reduce((a,x)=>a+Number(x.company_cash||0),0);
   const handed=(txr.data||[]).filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
   const balance=received-handed;
   if(amount>balance){alert('Pie dispečera jābūt tikai €'+balance.toFixed(2)+'.');return;}
