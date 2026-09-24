@@ -894,8 +894,25 @@ async function loadSettlementVehicles(){
 async function getShiftData(vid){
   const vr=await db.from('vehicles').select('id,name,plate,current_driver_id').eq('id',vid).single();
   if(vr.error) throw vr.error;
-  const last=await db.from('cash_settlements').select('closed_at').eq('vehicle_id',vid).order('closed_at',{ascending:false}).limit(1).maybeSingle();
-  const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
+  const confirmed=await db.from('dispatcher_cash_transactions')
+    .select('settlement_id,created_at')
+    .eq('vehicle_id',vid)
+    .eq('tx_type','received_from_shift')
+    .not('settlement_id','is',null)
+    .order('created_at',{ascending:false})
+    .limit(1)
+    .maybeSingle();
+
+  let since='1970-01-01T00:00:00.000Z';
+  if(confirmed.error) throw confirmed.error;
+  if(confirmed.data?.settlement_id){
+    const cs=await db.from('cash_settlements')
+      .select('closed_at')
+      .eq('id',confirmed.data.settlement_id)
+      .maybeSingle();
+    if(cs.error) throw cs.error;
+    if(cs.data?.closed_at) since=cs.data.closed_at;
+  }
   const [orders,expenses,clients]=await Promise.all([
     db.from('orders').select('id,client_id,price,our_share,cash_received,partner_debt,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since).order('completed_at',{ascending:true}),
     db.from('cash_expenses').select('id,amount,description,expense_payment_type,created_at').eq('vehicle_id',vid).gt('created_at',since).order('created_at',{ascending:true}),
@@ -951,6 +968,8 @@ async function closeSettlement(vid){
   try{
     const s=await getShiftData(vid);
     const snapshot={orders:s.orders.map(o=>({id:o.id,completed_at:o.completed_at,client:o.client?.name||'',payment_type:o.client?.payment_type||'',our_share:Number(o.our_share||0),driver_pay:Number(o.driver_pay||0)})),expenses:s.expenses.map(e=>({id:e.id,created_at:e.created_at,description:e.description||'',payment_type:e.expense_payment_type||'cash',amount:Number(e.amount||0)}))};
+    const btn=event?.currentTarget;
+    if(btn){btn.disabled=true;btn.textContent='SAGLABĀ...';}
     const ins=await db.from('cash_settlements').insert({
       vehicle_id:vid,driver_id:s.vr.current_driver_id||null,
       total_received:s.cashIncome+s.cashlessIncome,total_expenses:s.cashExpenses+s.cashlessExpenses,
@@ -959,8 +978,11 @@ async function closeSettlement(vid){
       shift_snapshot:snapshot
     }).select('id').single();
     if(ins.error) throw ins.error;
-    const tx=await db.from('dispatcher_cash_transactions').insert({tx_type:'received_from_shift',amount:s.toDispatcher,settlement_id:ins.data.id,vehicle_id:vid,driver_id:s.vr.current_driver_id||null,note:'Saņemts, aizverot vadītāja maiņu'});
-    if(tx.error) throw tx.error;
+    const tx=await db.from('dispatcher_cash_transactions').insert({tx_type:'received_from_shift',amount:s.toDispatcher,settlement_id:ins.data.id,vehicle_id:vid,driver_id:s.vr.current_driver_id||null,note:'Faktiski saņemts no vadītāja, aizverot maiņu'});
+    if(tx.error){
+      await db.from('cash_settlements').delete().eq('id',ins.data.id);
+      throw tx.error;
+    }
     out.innerHTML='<div class="notice">✅ Maiņa aizvērta. Dispečera kasē ieskaitīti €'+s.toDispatcher.toFixed(2)+'. Vadītāja jaunais periods sākas no nulles.</div>';
     await loadDispatcherCashControl();
   }catch(e){out.innerHTML='<div class="notice error">Neizdevās aizvērt maiņu: '+(e.message||e)+'</div>';}
@@ -976,7 +998,7 @@ async function loadDispatcherCashControl(){
   ]);
   if(txr.error||sr.error){box.innerHTML='<div class="notice error">'+(txr.error?.message||sr.error?.message)+'</div>';return;}
   const tx=txr.data||[], settlements=sr.data||[], vehicles=vr.data||[], drivers=dr.data||[];
-  const received=settlements.reduce((a,x)=>a+Number(x.company_cash||0),0);
+  const received=tx.filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
   const handed=tx.filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
   const balance=received-handed;
   box.innerHTML=`<div class="cash-grid">
@@ -989,7 +1011,7 @@ async function loadDispatcherCashControl(){
     <label class="field">Piezīme<input id="ownerCashNote" placeholder="Kam un kur nodots"></label>
   </div><button class="primary" style="margin-top:10px;width:100%" onclick="handCashToOwner()">NODOTS VADĪBAI</button></div>
   <details open style="margin-top:12px"><summary><b>Slēgtās maiņas</b></summary><div style="overflow:auto"><table><thead><tr><th>Datums</th><th>Mašīna</th><th>Vadītājs</th><th>Skaidra</th><th>Skaidras izmaksas</th><th>Alga</th><th>Dispečeram</th></tr></thead><tbody>
-  ${settlements.map(s=>{const v=vehicles.find(x=>Number(x.id)===Number(s.vehicle_id));const d=drivers.find(x=>Number(x.id)===Number(s.driver_id));return `<tr><td>${new Date(s.closed_at).toLocaleString('lv-LV')}</td><td>${v?`${v.name} ${v.plate}`:'—'}</td><td>${d?.name||'—'}</td><td>€${Number(s.cash_income||0).toFixed(2)}</td><td>€${Number(s.cash_expenses_total||0).toFixed(2)}</td><td>€${Number(s.driver_salary||0).toFixed(2)}</td><td><b>€${Number(s.company_cash||0).toFixed(2)}</b></td></tr>`}).join('')||'<tr><td colspan="7">Nav</td></tr>'}
+  ${settlements.map(s=>{const v=vehicles.find(x=>Number(x.id)===Number(s.vehicle_id));const d=drivers.find(x=>Number(x.id)===Number(s.driver_id));const ok=tx.some(t=>t.tx_type==='received_from_shift'&&Number(t.settlement_id)===Number(s.id));return `<tr><td>${new Date(s.closed_at).toLocaleString('lv-LV')}</td><td>${v?`${v.name} ${v.plate}`:'—'}</td><td>${d?.name||'—'}</td><td>€${Number(s.cash_income||0).toFixed(2)}</td><td>€${Number(s.cash_expenses_total||0).toFixed(2)}</td><td>€${Number(s.driver_salary||0).toFixed(2)}</td><td><b>€${Number(s.company_cash||0).toFixed(2)}</b><br><small>${ok?'✅ Saņemts':'⚠️ Vecs ieraksts — nav apstiprināts'}</small></td></tr>`}).join('')||'<tr><td colspan="7">Nav</td></tr>'}
   </tbody></table></div></details>
   <details style="margin-top:12px"><summary><b>Dispečera kases kustība</b></summary>${tx.map(t=>`${new Date(t.created_at).toLocaleString('lv-LV')} — ${t.tx_type==='received_from_shift'?'Saņemts no maiņas':'Nodots vadībai'} — €${Number(t.amount||0).toFixed(2)}${t.note?' — '+t.note:''}`).join('<br>')||'Nav'}</details>`;
 }
@@ -998,12 +1020,9 @@ async function handCashToOwner(){
   const amount=Number(document.getElementById('ownerCashAmount')?.value||0);
   const note=(document.getElementById('ownerCashNote')?.value||'').trim();
   if(!amount||amount<=0){alert('Ievadi summu.');return;}
-  const [txr,sr]=await Promise.all([
-    db.from('dispatcher_cash_transactions').select('tx_type,amount'),
-    db.from('cash_settlements').select('company_cash')
-  ]);
-  if(txr.error||sr.error){alert(txr.error?.message||sr.error?.message);return;}
-  const received=(sr.data||[]).reduce((a,x)=>a+Number(x.company_cash||0),0);
+  const txr=await db.from('dispatcher_cash_transactions').select('tx_type,amount');
+  if(txr.error){alert(txr.error.message);return;}
+  const received=(txr.data||[]).filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
   const handed=(txr.data||[]).filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
   const balance=received-handed;
   if(amount>balance){alert('Pie dispečera jābūt tikai €'+balance.toFixed(2)+'.');return;}
