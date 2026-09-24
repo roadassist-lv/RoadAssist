@@ -1464,7 +1464,9 @@ const isPartner=clientInfo.data.payment_type==='partner';
 /* Обычный заказ: все фактически полученные деньги — наша касса.
    Partner/Adak: наша доля задаётся отдельно, остаток идёт Adak. */
 if(!isPartner) our=cash;
-let partnerDebt=isPartner ? Math.max(0,cash-our) : 0;
+/* Долг Adak не фиксируем при создании заказа:
+   окончательная сумма считается только при завершении по реально полученным деньгам. */
+let partnerDebt=0;
 
 
 /* ПОЛУЧАЕМ НАЗВАНИЕ КЛИЕНТА */
