@@ -869,7 +869,7 @@ async function loadSettlementPreview(){
   const last=await db.from('cash_settlements').select('closed_at').eq('vehicle_id',vid).order('closed_at',{ascending:false}).limit(1).maybeSingle();
   const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
   const [orders,expenses]=await Promise.all([
-    db.from('orders').select('our_share,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),
+    db.from('orders').select('our_share,cash_received,partner_debt,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),
     db.from('cash_expenses').select('amount,description,created_at').eq('vehicle_id',vid).gt('created_at',since).order('created_at',{ascending:false})
   ]);
   if(orders.error||expenses.error){out.innerHTML='<div class="notice error">Neizdevās ielādēt kasi: '+(orders.error?.message||expenses.error?.message)+'</div>';return;}
@@ -888,7 +888,7 @@ async function closeSettlement(vid){
   if(vr.error){out.innerHTML='<div class="notice error">'+vr.error.message+'</div>';return;}
   const last=await db.from('cash_settlements').select('closed_at').eq('vehicle_id',vid).order('closed_at',{ascending:false}).limit(1).maybeSingle();
   const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
-  const [orders,expenses]=await Promise.all([db.from('orders').select('our_share,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount').eq('vehicle_id',vid).gt('created_at',since)]);
+  const [orders,expenses]=await Promise.all([db.from('orders').select('our_share,cash_received,partner_debt,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount').eq('vehicle_id',vid).gt('created_at',since)]);
   if(orders.error||expenses.error){out.innerHTML='<div class="notice error">Neizdevās aprēķināt norēķinu.</div>';return;}
   const received=(orders.data||[]).reduce((a,o)=>a+(o.our_share!==null&&o.our_share!==undefined?Number(o.our_share||0):Number(o.cash_received||0)-Number(o.partner_debt||0)),0);
   const exp=(expenses.data||[]).reduce((a,o)=>a+Number(o.amount||0),0);
@@ -916,7 +916,7 @@ async function loadVehicleCash(){
   const box=document.getElementById('vehicleCashBox'); if(!box)return;
   const last=await db.from('cash_settlements').select('closed_at').eq('vehicle_id',vehicleId).order('closed_at',{ascending:false}).limit(1).maybeSingle();
   const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
-  const [orders,expenses]=await Promise.all([db.from('orders').select('id,our_share,driver_pay,driver_id,completed_at').eq('vehicle_id',vehicleId).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount,description,created_at').eq('vehicle_id',vehicleId).gt('created_at',since).order('created_at',{ascending:false})]);
+  const [orders,expenses]=await Promise.all([db.from('orders').select('id,our_share,cash_received,partner_debt,driver_pay,driver_id,completed_at').eq('vehicle_id',vehicleId).eq('status','completed').gt('completed_at',since),db.from('cash_expenses').select('amount,description,created_at').eq('vehicle_id',vehicleId).gt('created_at',since).order('created_at',{ascending:false})]);
   if(orders.error||expenses.error){box.innerHTML='<div class="notice error">Kasi neizdevās ielādēt: '+(orders.error?.message||expenses.error?.message)+'</div>';return;}
   const received=(orders.data||[]).reduce((a,o)=>a+(o.our_share!==null&&o.our_share!==undefined?Number(o.our_share||0):Number(o.cash_received||0)-Number(o.partner_debt||0)),0);
   const exp=(expenses.data||[]).reduce((a,o)=>a+Number(o.amount||0),0);
@@ -1453,7 +1453,18 @@ return;
 }
 
 
-let partnerDebt=cash-our;
+/* ФИНАНСОВАЯ ЛОГИКА: partner (Adak) vs обычный клиент */
+const clientInfo=await db.from('clients').select('payment_type').eq('id',clientId).maybeSingle();
+if(clientInfo.error||!clientInfo.data){
+  msg('Neizdevās noteikt klienta apmaksas veidu: '+(clientInfo.error?.message||'klients nav atrasts'),true);
+  return;
+}
+const isPartner=clientInfo.data.payment_type==='partner';
+
+/* Обычный заказ: все фактически полученные деньги — наша касса.
+   Partner/Adak: наша доля задаётся отдельно, остаток идёт Adak. */
+if(!isPartner) our=cash;
+let partnerDebt=isPartner ? Math.max(0,cash-our) : 0;
 
 
 /* ПОЛУЧАЕМ НАЗВАНИЕ КЛИЕНТА */
@@ -2044,21 +2055,86 @@ async function finish(id){
   const rt=Number(document.getElementById('rt_'+id)?.value||0);
   const actual=Number(document.getElementById('pay_'+id)?.value||0);
   const comment=(document.getElementById('payComment_'+id)?.value||'').trim();
-  if(!Number.isFinite(km)||km<0||!Number.isFinite(rt)||rt<0||!Number.isFinite(actual)||actual<0){alert('Pārbaudi kilometrus, ratiņu skaitu un klienta samaksāto summu.');return;}
-  const current=await db.from('orders').select('price,our_share').eq('id',id).maybeSingle();
-  if(current.error||!current.data){alert(current.error?.message||'Pasūtījums nav atrasts.');return;}
-  const now=new Date();const dateKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  const holidays=[];const day=now.getDay();const weekend=day===0||day===6;const holiday=holidays.includes(dateKey);const hour=now.getHours();const night=weekend||holiday||hour>=22||hour<7;const tariff=night?'Nakts':'Diena';const base=night?15:10;const rate=night?.15:.10;const pay=base+km*rate+rt*5;
-  let q=db.from('orders').update({status:'completed',completed_at:now.toISOString(),kilometers:km,tow_ins:rt,driver_pay:pay,cash_received:actual,customer_payment_comment:comment||null,partner_debt:actual-Number(current.data.our_share||0)}).eq('id',id);
-  if(sessionMode==='vehicle')q=q.eq('vehicle_id',vehicleId);else if(sessionMode==='driver')q=q.eq('driver_id',driverId);else{alert('Nav atļauts.');return;}
-  const r=await q;if(r.error){alert(r.error.message);return;}
-  const adakDebt=actual-Number(current.data.our_share||0);
-  if(adakDebt!==0){
-    const ar=await db.rpc('add_adak_order_debt',{p_order_id:Number(id),p_vehicle_id:Number(vehicleId),p_driver_id:currentVehicleDriverId?Number(currentVehicleDriverId):(current.data.driver_id?Number(current.data.driver_id):null),p_amount:adakDebt,p_note:'Parāds no pabeigta pasūtījuma'});
-    if(ar.error){alert('Pasūtījums pabeigts, bet Adaka parādu neizdevās pievienot: '+ar.error.message);}
+
+  if(!Number.isFinite(km)||km<0||!Number.isFinite(rt)||rt<0||!Number.isFinite(actual)||actual<0){
+    alert('Pārbaudi kilometrus, ratiņu skaitu un klienta samaksāto summu.');
+    return;
   }
-  alert('Pasūtījums pabeigts.\n\nTarifs: '+tariff+'\nVadītāja samaksa: €'+pay.toFixed(2)+'\nNo klienta saņemts: €'+actual.toFixed(2));
-  if(sessionMode==='vehicle'){await loadVehicleOrders();await loadVehicleCash();}else await loadDriverOrders();
+
+  const current=await db.from('orders').select('price,our_share,client_id,driver_id,vehicle_id').eq('id',id).maybeSingle();
+  if(current.error||!current.data){
+    alert(current.error?.message||'Pasūtījums nav atrasts.');
+    return;
+  }
+
+  const clientInfo=await db.from('clients').select('payment_type').eq('id',current.data.client_id).maybeSingle();
+  if(clientInfo.error||!clientInfo.data){
+    alert('Neizdevās noteikt klienta apmaksas veidu: '+(clientInfo.error?.message||'klients nav atrasts'));
+    return;
+  }
+
+  const isPartner=clientInfo.data.payment_type==='partner';
+  const ourShare=isPartner ? Number(current.data.our_share||0) : actual;
+  const adakDebt=isPartner ? Math.max(0,actual-ourShare) : 0;
+
+  const now=new Date();
+  const dateKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const holidays=[];
+  const day=now.getDay();
+  const weekend=day===0||day===6;
+  const holiday=holidays.includes(dateKey);
+  const hour=now.getHours();
+  const night=weekend||holiday||hour>=22||hour<7;
+  const tariff=night?'Nakts':'Diena';
+  const base=night?15:10;
+  const rate=night?.15:.10;
+  const pay=base+km*rate+rt*5;
+
+  let q=db.from('orders').update({
+    status:'completed',
+    completed_at:now.toISOString(),
+    kilometers:km,
+    tow_ins:rt,
+    driver_pay:pay,
+    cash_received:actual,
+    our_share:ourShare,
+    customer_payment_comment:comment||null,
+    partner_debt:adakDebt
+  }).eq('id',id);
+
+  if(sessionMode==='vehicle') q=q.eq('vehicle_id',vehicleId);
+  else if(sessionMode==='driver') q=q.eq('driver_id',driverId);
+  else { alert('Nav atļauts.'); return; }
+
+  const r=await q;
+  if(r.error){ alert(r.error.message); return; }
+
+  /* Adak долг создаём только для partner-заказа и только при положительной сумме. */
+  if(isPartner && adakDebt>0){
+    const debtVehicleId=Number(current.data.vehicle_id||vehicleId||0);
+    const debtDriverId=Number(current.data.driver_id||currentVehicleDriverId||driverId||0)||null;
+    const ar=await db.rpc('add_adak_order_debt',{
+      p_order_id:Number(id),
+      p_vehicle_id:debtVehicleId,
+      p_driver_id:debtDriverId,
+      p_amount:adakDebt,
+      p_note:'Parāds no pabeigta pasūtījuma'
+    });
+    if(ar.error){
+      alert('Pasūtījums pabeigts, bet Adaka parādu neizdevās pievienot: '+ar.error.message);
+    }
+  }
+
+  alert('Pasūtījums pabeigts.\n\nTarifs: '+tariff+
+        '\nVadītāja samaksa: €'+pay.toFixed(2)+
+        '\nNo klienta saņemts: €'+actual.toFixed(2));
+
+  if(sessionMode==='vehicle'){
+    await loadVehicleOrders();
+    await loadVehicleCash();
+  }else{
+    await loadDriverOrders();
+  }
 }
 
 
