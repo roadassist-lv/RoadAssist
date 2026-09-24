@@ -285,7 +285,7 @@ Līdz
 
 <label class="field">
 Evakuators / kase
-<select id="settleVehicle"></select>
+<select id="settleVehicle" onchange="loadSettlementPreview()"></select>
 </label>
 
 </div>
@@ -295,7 +295,11 @@ APRĒĶINĀT
 </button>
 
 <details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">Mana samaksa</summary><div id="payResult" style="margin-top:15px"></div></details>
-<div id="settlementResult" style="margin-top:15px"></div>
+<details open style="margin-top:15px">
+<summary style="cursor:pointer;font-weight:700">💶 Maiņas norēķins / смена</summary>
+<div class="muted" style="margin:10px 0">Izvēlies evakuatoru augstāk. Šeit dispečers pārbauda kasi, izdevumus un vadītāja algu, pieņem uzņēmuma naudu un aizver maiņu.</div>
+<div id="settlementResult"><div class="notice">Izvēlies evakuatoru laukā “Evakuators / kase”.</div></div>
+</details>
 <details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">🤝 Parādi Adakam</summary><div id="adakDebtDispatcher" style="margin-top:15px">Ielādē...</div></details>
 </div>
 
@@ -698,7 +702,12 @@ let a=await db
 
 dispatcherVehicles=a.data||[];
 const settleVehicle=document.getElementById('settleVehicle');
-if(settleVehicle) settleVehicle.innerHTML='<option value="">Izvēlies evakuatoru</option>'+(a.data||[]).map(x=>`<option value="${x.id}">${x.name} — ${x.plate}</option>`).join('');
+if(settleVehicle){
+  const previous=settleVehicle.value;
+  settleVehicle.innerHTML='<option value="">Izvēlies evakuatoru</option>'+(a.data||[]).map(x=>`<option value="${x.id}">${x.name} — ${x.plate}</option>`).join('');
+  if(previous) settleVehicle.value=previous;
+  if(settleVehicle.value) loadSettlementPreview();
+}
 
 const vehicle=document.getElementById('vehicle');
 
