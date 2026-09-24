@@ -101,7 +101,6 @@ PIESLĒGTIES
 <button class="tab active" onclick="show('new',this)">Jauns pasūtījums</button>
 <button class="tab" onclick="show('orders',this)">Pasūtījumi</button>
 <button class="tab" onclick="show('finance',this)">Vadītāju samaksa</button>
-<button class="tab" onclick="show('settlements',this)">Norēķini</button>
 <button class="tab" onclick="show('drivers',this)">Vadītāji</button>
 </div>
 
@@ -301,27 +300,6 @@ APRĒĶINĀT
 </div>
 
 </section>
-
-
-<section id="settlements" class="screen">
-
-<div class="panel">
-<h2>Norēķini</h2>
-
-<label class="field">
-Partneris
-<select id="partnerClient"></select>
-</label>
-
-<button class="btn green" style="margin-top:12px" onclick="loadPartnerDebt()">
-PARĀDĪT PARĀDU
-</button>
-
-<div id="debtResult" style="margin-top:15px"></div>
-
-</div>
-</section>
-
 
 <section id="drivers" class="screen">
 
@@ -708,14 +686,6 @@ clientSelect.innerHTML=
 c.data.map(x=>`
 <option value="${x.id}">${x.name}</option>
 `).join('');
-
-document.getElementById('partnerClient').innerHTML=
-c.data
-.filter(x=>x.payment_type==='partner')
-.map(x=>`
-<option value="${x.id}">${x.name}</option>
-`).join('');
-
 }
 
 
@@ -1011,89 +981,6 @@ async function recordAdakCollection(){
   if(r.error){if(out)out.innerHTML='<div class="notice error">Neizdevās reģistrēt inkasāciju: '+r.error.message+'</div>';return;}
   await loadVehicleAdakDebt();
 }
-
-
-async function loadPartnerDebt(){
-
-let cid=Number(v('partnerClient'));
-
-if(!cid){
-document.getElementById('debtResult').innerHTML=
-'<div class="notice error">Izvēlies partneri.</div>';
-return;
-}
-
-let o=await db
-.from('orders')
-.select('partner_debt')
-.eq('client_id',cid)
-.eq('status','completed');
-
-let c=await db
-.from('partner_collections')
-.select('amount')
-.eq('client_id',cid);
-
-if(o.error||c.error){
-
-document.getElementById('debtResult').innerHTML=
-'<div class="notice error">Pārbaudi partneru tabulu un tiesības.</div>';
-
-return;
-}
-
-let debt=
-(o.data||[]).reduce(
-(x,a)=>x+Number(a.partner_debt||0),0
-)
--
-(c.data||[]).reduce(
-(x,a)=>x+Number(a.amount||0),0
-);
-
-document.getElementById('debtResult').innerHTML=`
-<h3>
-Partnera parāds:
-€${Math.max(0,debt).toFixed(2)}
-</h3>
-<label class="field">
-Inkasācijas summa, €
-<input id="collectionAmount" type="number" min="0" step="0.01" placeholder="0.00">
-</label>
-<button class="btn green" style="margin-top:12px" onclick="addCollection(${cid})">
-INKASĀCIJA
-</button>
-`;
-
-}
-
-
-/* ДОБАВИТЬ ИНКАССАЦИЮ */
-async function addCollection(cid){
-  const amount=Number(document.getElementById('collectionAmount')?.value||0);
-  const out=document.getElementById('debtResult');
-
-  if(!amount || amount<=0){
-    out.innerHTML += '<div class="notice error">Ievadi inkasācijas summu.</div>';
-    return;
-  }
-
-  const r=await db
-    .from('partner_collections')
-    .insert({
-      client_id:cid,
-      amount:amount
-    });
-
-  if(r.error){
-    out.innerHTML += '<div class="notice error">Inkasāciju neizdevās saglabāt: '+r.error.message+'</div>';
-    return;
-  }
-
-  out.innerHTML += '<div class="notice">Inkasācija €'+amount.toFixed(2)+' saglabāta.</div>';
-  await loadPartnerDebt();
-}
-
 
 /* ВОДИТЕЛЬ */
 async function initDriver(){
