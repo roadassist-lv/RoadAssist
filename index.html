@@ -107,6 +107,21 @@ PIESLĒGTIES
 <button class="tab" onclick="show('drivers',this)">Vadītāji</button>
 </div>
 
+<div class="tabs" id="ownerTabs" style="display:none">
+<button class="tab active" onclick="show('ownerOverview',this)">Pārskats</button>
+<button class="tab" onclick="show('ownerClients',this)">Klienti</button>
+<button class="tab" onclick="show('ownerFleet',this)">Autoparks</button>
+<button class="tab" onclick="show('ownerTariffs',this)">Tarifi</button>
+<button class="tab" onclick="show('ownerInvoices',this)">Rēķini</button>
+<button class="tab" onclick="show('ownerDispatchers',this)">Dispečeri</button>
+</div>
+
+<section id="ownerOverview" class="screen"><div class="panel"><h2>Vadības pārskats</h2><div class="form"><label class="field">No<input id="ownerFrom" type="date" onchange="loadOwnerOverview()"></label><label class="field">Līdz<input id="ownerTo" type="date" onchange="loadOwnerOverview()"></label></div><div id="ownerOverviewBox" style="margin-top:15px">Ielādē...</div></div></section>
+<section id="ownerClients" class="screen"><div class="panel"><h2>Klientu atskaites</h2><div class="form"><label class="field">Klients<select id="ownerClient" onchange="loadOwnerClientReport()"></select></label><label class="field">No<input id="ownerClientFrom" type="date" onchange="loadOwnerClientReport()"></label><label class="field">Līdz<input id="ownerClientTo" type="date" onchange="loadOwnerClientReport()"></label></div><div id="ownerClientReport" style="margin-top:15px">Izvēlies klientu.</div></div></section>
+<section id="ownerFleet" class="screen"><div class="panel"><h2>Autoparks</h2><div id="ownerFleetBox">Ielādē...</div></div></section>
+<section id="ownerTariffs" class="screen"><div class="panel"><h2>Līgumklientu tarifi</h2><div class="form"><label class="field">Klients<select id="tariffClient"></select></label><label class="field">Spēkā no<input id="tariffFrom" type="date"></label><label class="field">Pilsētas bāze, €<input id="tariffBase" type="number" step="0.01" value="0"></label><label class="field">€/km<input id="tariffKm" type="number" step="0.01" value="0"></label><label class="field">Ratiņi, €/gab.<input id="tariffTow" type="number" step="0.01" value="0"></label><label class="field">Jūrmala, €<input id="tariffJurmala" type="number" step="0.01" value="0"></label><label class="field">Nakts piemaksa, €<input id="tariffNight" type="number" step="0.01" value="0"></label><label class="field">Minimālā cena, €<input id="tariffMin" type="number" step="0.01" value="0"></label><label class="field">PVN, %<input id="tariffVat" type="number" step="0.01" value="21"></label><label class="field full">Piezīme<input id="tariffNote"></label></div><button class="green" style="margin-top:12px" onclick="saveTariff()">SAGLABĀT TARIFU</button><div id="tariffMsg" style="margin-top:10px"></div><div id="tariffList" style="margin-top:15px"></div></div></section>
+<section id="ownerInvoices" class="screen"><div class="panel"><h2>Rēķini un klientu parādi</h2><div id="ownerInvoicesBox">Ielādē...</div></div></section>
+<section id="ownerDispatchers" class="screen"><div class="panel"><h2>Dispečeri</h2><p class="muted">Katrs pasūtījums glabā lietotāju, kurš to izveidoja. Izmaiņas tiek saglabātas audita vēsturē.</p><div id="ownerDispatchersBox">Ielādē...</div></div></section>
 
 <section id="new" class="screen active">
 
@@ -401,6 +416,7 @@ let currentVehicleDriverId=null;
 let currentVehicleDriverName='';
 let currentVehicleWorkStatus='no_driver';
 let sessionMode=null;
+let currentProfile=null;
 let dispatcherDrivers=[];
 let dispatcherVehicles=[];
 let vehicleRefreshTimer=null;
@@ -429,6 +445,12 @@ if(id==='drivers')loadDrivers();
 if(id==='shiftSettlement'){ loadSettlementVehicles(); }
 if(id==='dispatcherCash')loadDispatcherCashControl();
 if(id==='adakScreen')loadAdakDebtDispatcher();
+if(id==='ownerOverview')loadOwnerOverview();
+if(id==='ownerClients')loadOwnerClientReport();
+if(id==='ownerFleet')loadOwnerFleet();
+if(id==='ownerTariffs')loadTariffs();
+if(id==='ownerInvoices')loadOwnerInvoices();
+if(id==='ownerDispatchers')loadOwnerDispatchers();
 }
 
 
@@ -528,6 +550,7 @@ async function logout(){
   document.getElementById('app').classList.add('hide');
   document.getElementById('login').classList.remove('hide');
   document.getElementById('logoutBtn').classList.add('hide');
+  const ot=document.getElementById('ownerTabs');if(ot)ot.style.display='none';
   document.getElementById('roleLabel').textContent='Pieslēgšanās';
   document.getElementById('loginMsg').innerHTML='';
   document.getElementById('password').value='';
@@ -578,7 +601,7 @@ if(vehicleAccount.data){
 
 const p=await db
 .from('profiles')
-.select('role')
+.select('role,display_name')
 .eq('id',user.id)
 .single();
 
@@ -592,7 +615,11 @@ document.getElementById('login').classList.add('hide');
 document.getElementById('app').classList.remove('hide');
 document.getElementById('logoutBtn').classList.remove('hide');
 
-if(p.data.role==='dispatcher'){
+currentProfile=p.data;
+if(p.data.role==='owner'){
+  sessionMode='owner';
+  await initOwner();
+}else if(p.data.role==='dispatcher'){
   sessionMode='dispatcher';
   await initDispatcher();
 }else{
@@ -688,7 +715,7 @@ document.getElementById('driverMsg').innerHTML='<div class="notice">Vadītājs '
 /* ДИСПЕТЧЕР */
 async function initDispatcher(){
 
-document.getElementById('roleLabel').textContent='Dispečers';
+document.getElementById('roleLabel').textContent='Dispečers'+(currentProfile?.display_name?' — '+currentProfile.display_name:'');
 
 document.getElementById('dispatcherTabs').style.display='flex';
 
@@ -796,6 +823,77 @@ await loadAdakDebtDispatcher();
 
 }
 
+
+
+/* ===== VADĪBAS KABINETS ===== */
+function ownerDateDefaults(){
+  const now=new Date(), first=new Date(now.getFullYear(),now.getMonth(),1);
+  const a=first.toLocaleDateString('sv-SE'), b=now.toLocaleDateString('sv-SE');
+  ['ownerFrom','ownerClientFrom'].forEach(id=>{const e=document.getElementById(id);if(e&&!e.value)e.value=a});
+  ['ownerTo','ownerClientTo'].forEach(id=>{const e=document.getElementById(id);if(e&&!e.value)e.value=b});
+  const tf=document.getElementById('tariffFrom');if(tf&&!tf.value)tf.value=a;
+}
+async function initOwner(){
+  document.getElementById('roleLabel').textContent='Vadība'+(currentProfile?.display_name?' — '+currentProfile.display_name:'');
+  document.getElementById('dispatcherTabs').style.display='none';
+  document.getElementById('ownerTabs').style.display='flex';
+  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));
+  document.getElementById('ownerOverview').classList.add('active');
+  ownerDateDefaults();
+  const c=await db.from('clients').select('id,name,payment_type,active').eq('active',true).order('name');
+  if(!c.error){
+    const opts='<option value="">Izvēlies klientu</option>'+(c.data||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+    document.getElementById('ownerClient').innerHTML=opts;
+    document.getElementById('tariffClient').innerHTML=opts;
+  }
+  await loadOwnerOverview();
+}
+function ownerRange(prefix='owner'){
+  const f=document.getElementById(prefix+'From')?.value, t=document.getElementById(prefix+'To')?.value;
+  return {f:f?f+'T00:00:00':'1970-01-01T00:00:00',t:t?t+'T23:59:59':'2999-12-31T23:59:59'};
+}
+async function loadOwnerOverview(){
+  const box=document.getElementById('ownerOverviewBox'); if(!box)return; ownerDateDefaults();
+  const {f,t}=ownerRange('owner');
+  const [or,cl,vr,cs,dt,ad,dc]=await Promise.all([
+    db.from('orders').select('id,client_id,vehicle_id,price,cash_received,our_share,partner_debt,kilometers,tow_ins,status,completed_at').eq('status','completed').gte('completed_at',f).lte('completed_at',t),
+    db.from('clients').select('id,name,payment_type'), db.from('vehicles').select('id,name,plate'),
+    db.from('cash_settlements').select('company_cash,driver_salary,closed_at').gte('closed_at',f).lte('closed_at',t),
+    db.from('dispatcher_cash_transactions').select('tx_type,amount,created_at').gte('created_at',f).lte('created_at',t),
+    db.from('adak_debt_events').select('event_type,amount,created_at').gte('created_at',f).lte('created_at',t),
+    db.from('adak_dispatcher_transactions').select('tx_type,amount,created_at').gte('created_at',f).lte('created_at',t)
+  ]);
+  const err=[or,cl,vr,cs,dt,ad,dc].find(x=>x.error); if(err){box.innerHTML='<div class="notice error">'+err.error.message+'</div>';return;}
+  const clients=cl.data||[], orders=or.data||[];
+  let cash=0,bank=0,partner=0,total=0,km=0;
+  for(const o of orders){const c=clients.find(x=>Number(x.id)===Number(o.client_id)); const p=c?.payment_type||''; const amount=Number(o.cash_received||o.price||0); total+=Number(o.price||0);km+=Number(o.kilometers||0); if(p==='cash')cash+=amount; else if(p==='partner')partner+=Number(o.partner_debt||0); else bank+=Number(o.price||0);}
+  const salary=(cs.data||[]).reduce((a,x)=>a+Number(x.driver_salary||0),0);
+  const dispReceived=(dt.data||[]).filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
+  const toOwner=(dt.data||[]).filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
+  const adakHanded=(dc.data||[]).filter(x=>x.tx_type==='handed_to_adak').reduce((a,x)=>a+Number(x.amount||0),0);
+  box.innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${orders.length}</b></div><div class="finance-card">Apgrozījums<br><b>€${total.toFixed(2)}</b></div><div class="finance-card">Skaidrā naudā<br><b>€${cash.toFixed(2)}</b></div><div class="finance-card">Pārskaitījumi / līgumi<br><b>€${bank.toFixed(2)}</b></div><div class="finance-card">Adak daļa<br><b>€${partner.toFixed(2)}</b></div><div class="finance-card">Nobraukums pasūtījumos<br><b>${km.toFixed(0)} km</b></div><div class="finance-card">Vadītāju algas<br><b>€${salary.toFixed(2)}</b></div><div class="finance-card">Saņēmis dispečers<br><b>€${dispReceived.toFixed(2)}</b></div><div class="finance-card">Nodots vadībai<br><b>€${toOwner.toFixed(2)}</b></div><div class="finance-card">Nodots Adakam<br><b>€${adakHanded.toFixed(2)}</b></div></div>`;
+}
+async function loadOwnerClientReport(){
+  const box=document.getElementById('ownerClientReport'); if(!box)return; const cid=Number(document.getElementById('ownerClient')?.value||0); if(!cid){box.innerHTML='<div class="notice">Izvēlies klientu.</div>';return;} const {f,t}=ownerRange('ownerClient');
+  const [r,vr,dr,pr]=await Promise.all([db.from('orders').select('id,created_at,completed_at,car,plate,pickup,destination,kilometers,tow_ins,jurmala_entry,night_service,price,contractual_amount,cash_received,vehicle_id,driver_id,created_by,status').eq('client_id',cid).gte('created_at',f).lte('created_at',t).order('created_at'),db.from('vehicles').select('id,name,plate'),db.from('drivers').select('id,name'),db.from('profiles').select('id,display_name,role')]);
+  const err=[r,vr,dr,pr].find(x=>x.error);if(err){box.innerHTML='<div class="notice error">'+err.error.message+'</div>';return;} const rows=r.data||[], vehicles=vr.data||[], drivers=dr.data||[], profiles=pr.data||[]; const km=rows.reduce((a,x)=>a+Number(x.kilometers||0),0), sum=rows.reduce((a,x)=>a+Number(x.contractual_amount??x.price??0),0);
+  box.innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${rows.length}</b></div><div class="finance-card">Kilometri<br><b>${km.toFixed(0)}</b></div><div class="finance-card">Aprēķinātā summa<br><b>€${sum.toFixed(2)}</b></div></div><div style="overflow:auto;margin-top:15px"><table><thead><tr><th>Nr.</th><th>Datums</th><th>Auto</th><th>No</th><th>Uz</th><th>Km</th><th>Ratiņi</th><th>Jūrmala</th><th>Nakts</th><th>Evakuators</th><th>Vadītājs</th><th>Dispečers</th><th>Summa</th></tr></thead><tbody>${rows.map(o=>{const vv=vehicles.find(x=>Number(x.id)===Number(o.vehicle_id)),d=drivers.find(x=>Number(x.id)===Number(o.driver_id)),p=profiles.find(x=>x.id===o.created_by);return `<tr><td>${o.id}</td><td>${new Date(o.created_at).toLocaleDateString('lv-LV')}</td><td>${o.car||''} ${o.plate||''}</td><td>${o.pickup||'—'}</td><td>${o.destination||'—'}</td><td>${Number(o.kilometers||0)}</td><td>${Number(o.tow_ins||0)}</td><td>${o.jurmala_entry?'Jā':'—'}</td><td>${o.night_service?'Jā':'—'}</td><td>${vv?vv.name+' '+vv.plate:'—'}</td><td>${d?.name||'—'}</td><td>${p?.display_name||'—'}</td><td>€${Number(o.contractual_amount??o.price??0).toFixed(2)}</td></tr>`}).join('')||'<tr><td colspan="13">Nav pasūtījumu.</td></tr>'}</tbody></table></div>`;
+}
+async function loadOwnerFleet(){
+  const box=document.getElementById('ownerFleetBox');if(!box)return;ownerDateDefaults();const {f,t}=ownerRange('owner');const [vr,or]=await Promise.all([db.from('vehicles').select('id,name,plate,active').order('id'),db.from('orders').select('vehicle_id,kilometers,price,status,completed_at').eq('status','completed').gte('completed_at',f).lte('completed_at',t)]);if(vr.error||or.error){box.innerHTML='<div class="notice error">'+(vr.error?.message||or.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Evakuators</th><th>Pasūtījumi</th><th>Kilometri</th><th>Apgrozījums</th></tr></thead><tbody>'+(vr.data||[]).map(vv=>{const a=(or.data||[]).filter(o=>Number(o.vehicle_id)===Number(vv.id));return `<tr><td><b>${vv.name} — ${vv.plate}</b></td><td>${a.length}</td><td>${a.reduce((s,o)=>s+Number(o.kilometers||0),0).toFixed(0)} km</td><td>€${a.reduce((s,o)=>s+Number(o.price||0),0).toFixed(2)}</td></tr>`}).join('')+'</tbody></table></div>';
+}
+async function saveTariff(){
+  const row={client_id:Number(v('tariffClient')),valid_from:v('tariffFrom'),city_base:Number(v('tariffBase')||0),km_rate:Number(v('tariffKm')||0),tow_in_rate:Number(v('tariffTow')||0),jurmala_fee:Number(v('tariffJurmala')||0),night_fee:Number(v('tariffNight')||0),minimum_price:Number(v('tariffMin')||0),vat_rate:Number(v('tariffVat')||21),note:v('tariffNote')||null};if(!row.client_id||!row.valid_from){document.getElementById('tariffMsg').innerHTML='<div class="notice error">Izvēlies klientu un datumu.</div>';return;}const r=await db.from('client_tariffs').insert(row);document.getElementById('tariffMsg').innerHTML=r.error?'<div class="notice error">'+r.error.message+'</div>':'<div class="notice">Tarifs saglabāts.</div>';if(!r.error)await loadTariffs();
+}
+async function loadTariffs(){
+  const box=document.getElementById('tariffList');if(!box)return;const [r,c]=await Promise.all([db.from('client_tariffs').select('*').order('valid_from',{ascending:false}),db.from('clients').select('id,name')]);if(r.error||c.error){box.innerHTML='<div class="notice error">'+(r.error?.message||c.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Klients</th><th>No</th><th>Bāze</th><th>€/km</th><th>Ratiņi</th><th>Jūrmala</th><th>Nakts</th><th>Min.</th><th>PVN</th></tr></thead><tbody>'+(r.data||[]).map(x=>`<tr><td>${(c.data||[]).find(y=>Number(y.id)===Number(x.client_id))?.name||x.client_id}</td><td>${x.valid_from}</td><td>€${Number(x.city_base).toFixed(2)}</td><td>€${Number(x.km_rate).toFixed(2)}</td><td>€${Number(x.tow_in_rate).toFixed(2)}</td><td>€${Number(x.jurmala_fee).toFixed(2)}</td><td>€${Number(x.night_fee).toFixed(2)}</td><td>€${Number(x.minimum_price).toFixed(2)}</td><td>${Number(x.vat_rate)}%</td></tr>`).join('')+'</tbody></table></div>';
+}
+async function loadOwnerInvoices(){
+  const box=document.getElementById('ownerInvoicesBox');if(!box)return;const [r,c]=await Promise.all([db.from('client_invoices').select('*').order('created_at',{ascending:false}),db.from('clients').select('id,name')]);if(r.error||c.error){box.innerHTML='<div class="notice error">'+(r.error?.message||c.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Klients</th><th>Periods</th><th>Rēķins</th><th>Bez PVN</th><th>PVN</th><th>Kopā</th><th>Statuss</th></tr></thead><tbody>'+(r.data||[]).map(x=>`<tr><td>${(c.data||[]).find(y=>Number(y.id)===Number(x.client_id))?.name||x.client_id}</td><td>${x.period_from} — ${x.period_to}</td><td>${x.invoice_number||'—'}</td><td>€${Number(x.amount_net).toFixed(2)}</td><td>€${Number(x.vat_amount).toFixed(2)}</td><td><b>€${Number(x.amount_total).toFixed(2)}</b></td><td>${x.status}</td></tr>`).join('')||'<tr><td colspan="7">Rēķinu vēl nav.</td></tr>'+'</tbody></table></div>';
+}
+async function loadOwnerDispatchers(){
+  const box=document.getElementById('ownerDispatchersBox');if(!box)return;const {f,t}=ownerRange('owner');const [p,o,a]=await Promise.all([db.from('profiles').select('id,display_name,role').eq('role','dispatcher'),db.from('orders').select('id,created_by,created_at').gte('created_at',f).lte('created_at',t),db.from('order_audit_log').select('actor_id,action,changed_at').gte('changed_at',f).lte('changed_at',t)]);if(p.error||o.error||a.error){box.innerHTML='<div class="notice error">'+(p.error?.message||o.error?.message||a.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Dispečers</th><th>Izveidoti pasūtījumi</th><th>Izmaiņas</th></tr></thead><tbody>'+(p.data||[]).map(x=>`<tr><td><b>${x.display_name||'Bez vārda'}</b></td><td>${(o.data||[]).filter(y=>y.created_by===x.id).length}</td><td>${(a.data||[]).filter(y=>y.actor_id===x.id&&y.action==='updated').length}</td></tr>`).join('')+'</tbody></table></div>';
+}
 
 /* ОПЛАТА ВОДИТЕЛЯ */
 async function loadDriverPay(){
@@ -1580,6 +1678,8 @@ clientSelect.options[clientSelect.selectedIndex]?.text||'';
 
 
 let o={
+
+created_by:user?.id||null,
 
 client_id:clientId,
 
