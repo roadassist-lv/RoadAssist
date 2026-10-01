@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Towing Sistēma</title>
+<title>RoadAssist · OWNER 2026-10-01</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -49,6 +49,7 @@ main{padding:12px}
 @media(max-width:700px){
 .finance-grid{grid-template-columns:1fr 1fr}
 }
+button:disabled{opacity:.5;cursor:wait}details summary{cursor:pointer;padding:8px}#ownerTabs{position:sticky;top:0;z-index:2;background:#f3f5f7;padding:8px 0}#ownerClients table td{min-width:75px}#ownerClients table td:nth-child(4){min-width:210px}@media(max-width:700px){.finance-card b{font-size:18px}}
 </style>
 </head>
 
@@ -109,19 +110,48 @@ PIESLĒGTIES
 
 <div class="tabs" id="ownerTabs" style="display:none">
 <button class="tab active" onclick="show('ownerOverview',this)">Pārskats</button>
-<button class="tab" onclick="show('ownerClients',this)">Klienti</button>
+<button class="tab" onclick="show('ownerClients',this)">Klienti un pasūtījumi</button>
 <button class="tab" onclick="show('ownerFleet',this)">Autoparks</button>
 <button class="tab" onclick="show('ownerTariffs',this)">Tarifi</button>
-<button class="tab" onclick="show('ownerInvoices',this)">Rēķini</button>
-<button class="tab" onclick="show('ownerDispatchers',this)">Dispečeri</button>
+<button class="tab" onclick="show('ownerInvoices',this)">Rēķini un apmaksa</button>
+<button class="tab" onclick="show('ownerDispatchers',this)">Personāls</button>
 </div>
+<section id="ownerOverview" class="screen"><div class="panel">
+<h2>Vadības pārskats</h2><p class="muted">RoadAssist OWNER · 2026-10-01</p>
+<div class="form"><label class="field">No<input id="ownerFrom" type="date" onchange="loadOwnerOverview()"></label><label class="field">Līdz<input id="ownerTo" type="date" onchange="loadOwnerOverview()"></label></div>
+<div id="ownerOverviewBox" style="margin-top:15px"></div></div></section>
+<section id="ownerClients" class="screen"><div class="panel">
+<h2>Klienti un mēneša atskaite</h2>
+<div class="form"><label class="field">Klients<select id="ownerClient" onchange="loadOwnerClientReport()"></select></label><label class="field">Mēnesis<input id="ownerMonth" type="month" onchange="raSetMonth()"></label><label class="field">No<input id="ownerClientFrom" type="date" onchange="loadOwnerClientReport()"></label><label class="field">Līdz<input id="ownerClientTo" type="date" onchange="loadOwnerClientReport()"></label></div>
+<p class="muted">Pabeigtie pasūtījumi pēc pabeigšanas datuma Latvijas laikā. Līguma summas ir bez PVN. Tukšs lauks nozīmē, ka datu nav.</p>
+<div class="tabs"><button onclick="raClientEditor()">Jauns klients</button><button onclick="raClientEditor(true)">Labot klientu</button><button class="primary" onclick="raExport()">Lejupielādēt Excel</button><button onclick="raInvoiceEditor()">Izveidot rēķinu</button></div>
+<div id="ownerClientReport"></div><div id="raClientEditor"></div><div id="raServices"></div><div id="raInvoiceEditor"></div><div id="raOrderAudit"></div>
+</div></section>
+<section id="ownerFleet" class="screen"><div class="panel"><h2>Autoparks</h2><p class="muted">Periods no sadaļas Pārskats. Kilometri no pabeigtajiem pasūtījumiem, nevis odometra.</p><div id="ownerFleetBox"></div></div></section>
+<section id="ownerTariffs" class="screen"><div class="panel"><h2>Līgumklientu tarifi</h2>
+<p class="notice">Cena bez PVN = bāze + kilometri × likme + pakalpojumi, vismaz minimālā cena. Nakts procenti attiecas uz bāzi un kilometriem; nakts fiksētā piemaksa tiek pieskaitīta. Esošos tarifus saglabājam vēsturē.</p>
+<div class="form">
+<label class="field">Klients<select id="tariffClient"></select></label><label class="field">Spēkā no<input id="tariffFrom" type="date"></label>
+<label class="field">Bāze, €<input id="tariffBase" type="number" min="0" step="0.01" value="0"></label>
+<label class="field">€/km<input id="tariffKm" type="number" min="0" step="0.0001" value="0"></label>
+<label class="field">Ratiņi, €/gab.<input id="tariffTow" type="number" min="0" step="0.01" value="0"></label>
+<label class="field">Jūrmala, €<input id="tariffJurmala" type="number" min="0" step="0.01" value="0"></label>
+<label class="field">Nakts piemaksa, €<input id="tariffNight" type="number" min="0" step="0.01" value="0"></label>
+<label class="field">Nakts piemaksa, %<input id="tariffNightPercent" type="number" min="0" step="0.001" value="0"></label>
+<label class="field">Piestartēšana, €<input id="tariffJump" type="number" min="0" step="0.01" value="0"></label>
+<label class="field">Riepu maiņa, €<input id="tariffTyre" type="number" min="0" step="0.01" value="0"></label>
+<label class="field">Gaidīšana, €/st.<input id="tariffWait" type="number" min="0" step="0.01" value="0"></label>
+<label class="field">Minimālā cena, €<input id="tariffMin" type="number" min="0" step="0.01" value="0"></label>
+<label class="field">PVN, %<input id="tariffVat" type="number" min="0" max="100" step="0.001" value="21"></label>
+<label class="field">Piezīme<input id="tariffNote"></label></div>
+<button class="green" style="margin-top:12px" onclick="saveTariff()">Saglabāt jaunu tarifu</button><div id="tariffMsg"></div><div id="tariffList"></div>
+</div></section>
+<section id="ownerInvoices" class="screen"><div class="panel"><h2>Rēķini un klientu parādi</h2><p class="muted">Sagatavotie rēķini parādā netiek ieskaitīti. Parāds = nosūtīto rēķinu summa mīnus reģistrētās apmaksas. Rēķina izveide un atzīme “Nosūtīts” e-pastu nenosūta.</p><div id="ownerInvoicesBox"></div><div id="raPaymentEditor"></div><div id="raInvoiceDetail"></div></div></section>
+<section id="ownerDispatchers" class="screen"><div class="panel"><h2>Personāls</h2>
+<p class="notice">Vadītājus un dispečerus deaktivizējam, saglabājot pasūtījumu vēsturi. Jaunam personīgam loginam vispirms izveidojiet lietotāju Supabase → Authentication → Users un šeit ievadiet tā UUID. Vadītājam, kurš strādā ar mašīnas kontu, personīgs UUID nav vajadzīgs.</p>
+<div class="tabs"><button onclick="raStaffEditor('driver')">Pievienot vadītāju</button><button onclick="raStaffEditor('dispatcher')">Pievienot dispečeru</button></div>
+<div id="ownerDispatchersBox"></div><div id="raStaffEditor"></div><div id="raStaffHistory"></div></div></section>
 
-<section id="ownerOverview" class="screen"><div class="panel"><h2>Vadības pārskats</h2><div class="form"><label class="field">No<input id="ownerFrom" type="date" onchange="loadOwnerOverview()"></label><label class="field">Līdz<input id="ownerTo" type="date" onchange="loadOwnerOverview()"></label></div><div id="ownerOverviewBox" style="margin-top:15px">Ielādē...</div></div></section>
-<section id="ownerClients" class="screen"><div class="panel"><h2>Klientu atskaites</h2><div class="form"><label class="field">Klients<select id="ownerClient" onchange="loadOwnerClientReport()"></select></label><label class="field">No<input id="ownerClientFrom" type="date" onchange="loadOwnerClientReport()"></label><label class="field">Līdz<input id="ownerClientTo" type="date" onchange="loadOwnerClientReport()"></label></div><div id="ownerClientReport" style="margin-top:15px">Izvēlies klientu.</div></div></section>
-<section id="ownerFleet" class="screen"><div class="panel"><h2>Autoparks</h2><div id="ownerFleetBox">Ielādē...</div></div></section>
-<section id="ownerTariffs" class="screen"><div class="panel"><h2>Līgumklientu tarifi</h2><div class="form"><label class="field">Klients<select id="tariffClient"></select></label><label class="field">Spēkā no<input id="tariffFrom" type="date"></label><label class="field">Pilsētas bāze, €<input id="tariffBase" type="number" step="0.01" value="0"></label><label class="field">€/km<input id="tariffKm" type="number" step="0.01" value="0"></label><label class="field">Ratiņi, €/gab.<input id="tariffTow" type="number" step="0.01" value="0"></label><label class="field">Jūrmala, €<input id="tariffJurmala" type="number" step="0.01" value="0"></label><label class="field">Nakts piemaksa, €<input id="tariffNight" type="number" step="0.01" value="0"></label><label class="field">Minimālā cena, €<input id="tariffMin" type="number" step="0.01" value="0"></label><label class="field">PVN, %<input id="tariffVat" type="number" step="0.01" value="21"></label><label class="field full">Piezīme<input id="tariffNote"></label></div><button class="green" style="margin-top:12px" onclick="saveTariff()">SAGLABĀT TARIFU</button><div id="tariffMsg" style="margin-top:10px"></div><div id="tariffList" style="margin-top:15px"></div></div></section>
-<section id="ownerInvoices" class="screen"><div class="panel"><h2>Rēķini un klientu parādi</h2><div id="ownerInvoicesBox">Ielādē...</div></div></section>
-<section id="ownerDispatchers" class="screen"><div class="panel"><h2>Dispečeri</h2><p class="muted">Katrs pasūtījums glabā lietotāju, kurš to izveidoja. Izmaiņas tiek saglabātas audita vēsturē.</p><div id="ownerDispatchersBox">Ielādē...</div></div></section>
 
 <section id="new" class="screen active">
 
@@ -229,6 +259,7 @@ Evakuatora automašīna
 <select id="vehicle"></select>
 </label>
 
+<div class="full"><label><input id="newJurmala" type="checkbox"> Jūrmala</label> <label><input id="newNight" type="checkbox"> Nakts tarifs</label> <label><input id="newJump" type="checkbox"> Piestartēšana</label> <label><input id="newTyre" type="checkbox"> Riepu maiņa</label></div>
 <div id="vehiclePhone" class="notice"></div>
 
 <label class="field">
@@ -576,6 +607,11 @@ return;
 user=s.data.session.user;
 }
 
+const access=await db.rpc('ra_account_active');
+if(access.error||access.data!==true){
+ document.getElementById('loginMsg').textContent=access.error?'Nepieciešama OWNER SQL migrācija: '+access.error.message:'Lietotāja piekļuve ir deaktivizēta.';
+ await db.auth.signOut();user=null;return;
+}
 /* СНАЧАЛА ПРОВЕРЯЕМ, НЕ ЯВЛЯЕТСЯ ЛИ ЭТО АККАУНТОМ МАШИНЫ */
 const vehicleAccount=await db
 .from('vehicles')
@@ -826,74 +862,149 @@ await loadAdakDebtDispatcher();
 
 
 /* ===== VADĪBAS KABINETS ===== */
-function ownerDateDefaults(){
-  const now=new Date(), first=new Date(now.getFullYear(),now.getMonth(),1);
-  const a=first.toLocaleDateString('sv-SE'), b=now.toLocaleDateString('sv-SE');
-  ['ownerFrom','ownerClientFrom'].forEach(id=>{const e=document.getElementById(id);if(e&&!e.value)e.value=a});
-  ['ownerTo','ownerClientTo'].forEach(id=>{const e=document.getElementById(id);if(e&&!e.value)e.value=b});
-  const tf=document.getElementById('tariffFrom');if(tf&&!tf.value)tf.value=a;
+// RoadAssist owner release. All mutations use owner-checked server functions.
+const RA={clients:[],drivers:[],profiles:[],rows:[],invoices:[],payments:[],busy:new Set(),generation:{}};
+function raUUID(){const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const h=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);}
+const raEl=id=>document.getElementById(id);
+const raEsc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const raMoney=x=>x===null||x===undefined?'—':'€'+Number(x).toFixed(2);
+const raSum=(a,key)=>a.reduce((s,x)=>s+Number(x[key]??0),0);
+function raDate(x=new Date()){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Riga',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(x));}
+function raInPeriod(x,a,b){return !!x&&raDate(x)>=a&&raDate(x)<=b;}
+function raDates(prefix='owner') {const a=v(prefix+'From'),b=v(prefix+'To');if(!a||!b||a>b)throw Error('Norādiet pareizu periodu.');return {a,b};}
+function ownerDateDefaults(){const today=raDate();for(const p of ['owner','ownerClient']){if(!v(p+'From'))raEl(p+'From').value=today.slice(0,7)+'-01';if(!v(p+'To'))raEl(p+'To').value=today;}if(!v('tariffFrom'))raEl('tariffFrom').value=today;if(!v('ownerMonth'))raEl('ownerMonth').value=today.slice(0,7);}
+function raTable(head,rows){return '<div style="overflow:auto"><table><thead><tr>'+head.map(x=>'<th>'+raEsc(x)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+(rows.length?'':'<tr><td colspan="'+head.length+'">Nav ierakstu.</td></tr>')+'</tbody></table></div>';}
+function raCards(pairs){return '<div class="finance-grid">'+pairs.map(([label,val])=>'<div class="finance-card">'+raEsc(label)+'<br><b>'+raEsc(val)+'</b></div>').join('')+'</div>';}
+function raNotice(text,error=false){return '<div class="notice'+(error?' error':'')+'">'+raEsc(text)+'</div>';}
+async function raRpc(name,args){const r=await db.rpc(name,args);if(r.error)throw Error(r.error.message);return r.data;}
+async function raAll(table,order='id'){
+ let rows=[],offset=0;
+ for(;;){const r=await db.from(table).select('*').order(order,{ascending:true}).range(offset,offset+499);if(r.error)throw Error(table+': '+r.error.message);rows.push(...r.data);if(r.data.length<500)return rows;offset+=500;}
 }
+async function raRun(key,fn){if(sessionMode!=='owner')return;if(RA.busy.has(key))return;RA.busy.add(key);try{await fn();}catch(e){alert(e.message||String(e));}finally{RA.busy.delete(key);}}
+async function raLoad(id,fn){if(sessionMode!=='owner')return;const generation=(RA.generation[id]||0)+1;RA.generation[id]=generation;raEl(id).innerHTML=raNotice('Ielādē…');try{const html=await fn();if(RA.generation[id]===generation&&sessionMode==='owner')raEl(id).innerHTML=html;}catch(e){if(RA.generation[id]===generation)raEl(id).innerHTML=raNotice(e.message,true);}}
+async function raClientOptions(){RA.clients=await raAll('clients');for(const id of ['ownerClient','tariffClient']){const prev=v(id);raEl(id).innerHTML='<option value="">Izvēlies klientu</option>'+RA.clients.map(c=>'<option value="'+Number(c.id)+'">'+raEsc(c.name)+(c.active?'':' (neaktīvs)')+'</option>').join('');raEl(id).value=prev;}}
 async function initOwner(){
-  document.getElementById('roleLabel').textContent='Vadība'+(currentProfile?.display_name?' — '+currentProfile.display_name:'');
-  document.getElementById('dispatcherTabs').style.display='none';
-  document.getElementById('ownerTabs').style.display='flex';
-  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));
-  document.getElementById('ownerOverview').classList.add('active');
-  ownerDateDefaults();
-  const c=await db.from('clients').select('id,name,payment_type,active').eq('active',true).order('name');
-  if(!c.error){
-    const opts='<option value="">Izvēlies klientu</option>'+(c.data||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
-    document.getElementById('ownerClient').innerHTML=opts;
-    document.getElementById('tariffClient').innerHTML=opts;
-  }
-  await loadOwnerOverview();
+ raEl('roleLabel').textContent='Vadība'+(currentProfile?.display_name?' — '+currentProfile.display_name:'');
+ raEl('dispatcherTabs').style.display='none';raEl('ownerTabs').style.display='flex';document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));raEl('ownerOverview').classList.add('active');ownerDateDefaults();
+ try{await raClientOptions();await loadOwnerOverview();}catch(e){raEl('ownerOverviewBox').innerHTML=raNotice(e.message,true);}
 }
-function ownerRange(prefix='owner'){
-  const f=document.getElementById(prefix+'From')?.value, t=document.getElementById(prefix+'To')?.value;
-  return {f:f?f+'T00:00:00':'1970-01-01T00:00:00',t:t?t+'T23:59:59':'2999-12-31T23:59:59'};
+function raSetMonth(){const m=v('ownerMonth');if(!m)return;raEl('ownerClientFrom').value=m+'-01';const [y,n]=m.split('-').map(Number);raEl('ownerClientTo').value=new Date(Date.UTC(y,n,0)).toISOString().slice(0,10);loadOwnerClientReport();}
+function raPaid(i,payments=RA.payments){return i.status==='paid'&&!i.ra_managed?Number(i.amount_total):raSum(payments.filter(p=>Number(p.invoice_id)===Number(i.id)),'amount');}
+function raDebt(i){return ['sent','overdue','paid'].includes(i.status)?Math.max(0,Number(i.amount_total)-raPaid(i)):0;}
+function raInvoiceStatus(i){if(i.status==='cancelled')return 'Anulēts';if(i.status==='draft')return 'Sagatavots';const paid=raPaid(i),debt=raDebt(i);if(i.status==='paid'||debt===0)return 'Apmaksāts';return (i.due_date&&i.due_date<raDate()?'Kavēts':paid>0?'Daļēji apmaksāts':'Nosūtīts');}
+async function loadOwnerOverview(){return raLoad('ownerOverviewBox',async()=>{
+ const {a,b}=raDates();
+ const [orders,clients,expenses,cash,adak,debts,invoices,payments,settlements,collections]=await Promise.all([
+ raAll('orders'),raAll('clients'),raAll('cash_expenses'),raAll('dispatcher_cash_transactions'),raAll('adak_dispatcher_transactions'),raAll('adak_debts','vehicle_id'),raAll('client_invoices'),raAll('ra_invoice_payments'),raAll('cash_settlements'),raAll('adak_collections')]);
+ RA.invoices=invoices;RA.payments=payments;
+ const os=orders.filter(o=>o.status==='completed'&&raInPeriod(o.completed_at,a,b)),es=expenses.filter(x=>raInPeriod(x.created_at,a,b)),tx=cash.filter(x=>raInPeriod(x.created_at,a,b)),at=adak.filter(x=>raInPeriod(x.created_at,a,b));
+ const paymentType=o=>clients.find(c=>Number(c.id)===Number(o.client_id))?.payment_type;
+ const contractClients=clients.filter(c=>!['cash','partner'].includes(c.payment_type));
+ let ready=0,expected=0,missing=0;
+ for(const c of contractClients){if(!os.some(o=>Number(o.client_id)===Number(c.id)))continue;const rows=await raRpc('ra_client_report',{p_client:c.id,p_from:a,p_to:b});for(const o of rows){if(o.charge?.issue||o.charge?.amount_net==null){missing++;continue;}expected+=Number(o.charge.amount_net);if(!o.invoice_id)ready+=Number(o.charge.amount_net);}}
+ const received=raSum(tx.filter(x=>x.tx_type==='received_from_shift'),'amount'),handed=raSum(tx.filter(x=>x.tx_type==='handed_to_owner'),'amount');
+ const cashBalance=raSum(cash.filter(x=>x.tx_type==='received_from_shift'),'amount')-raSum(cash.filter(x=>x.tx_type==='handed_to_owner'),'amount');
+ const adakBalance=raSum(adak.filter(x=>x.tx_type==='received_from_driver'),'amount')-raSum(adak.filter(x=>x.tx_type==='handed_to_adak'),'amount');
+ const confirmed=new Set(cash.filter(x=>x.tx_type==='received_from_shift').map(x=>Number(x.settlement_id)));
+ const closed=settlements.filter(x=>confirmed.has(Number(x.id))&&raInPeriod(x.closed_at,a,b));
+ return raCards([
+ ['Pabeigti pasūtījumi',os.length],['Pasūtījumu kilometri',raSum(os,'kilometers').toFixed(1)+' km'],
+ ['Līgumi bez PVN (aprēķināti)',raMoney(expected)],['Vēl jāizraksta bez PVN',raMoney(ready)],
+ ['Skaidras naudas klienti: faktiski saņemts',raMoney(raSum(os.filter(o=>paymentType(o)==='cash'),'cash_received'))],
+ ['Pārskaitījumu pasūtījumu norādītā cena',raMoney(raSum(os.filter(o=>!['cash','partner'].includes(paymentType(o))),'price'))],
+ ['Rēķinu apmaksas periodā',raMoney(raSum(payments.filter(x=>x.paid_on>=a&&x.paid_on<=b),'amount'))],
+ ['Visu nosūtīto rēķinu parāds ar PVN',raMoney(invoices.reduce((s,i)=>s+raDebt(i),0))],
+ ['Izdevumi skaidrā naudā',raMoney(raSum(es.filter(e=>(e.expense_payment_type||'cash')==='cash'),'amount'))],
+ ['Izdevumi ar karti/pārskaitījumu',raMoney(raSum(es.filter(e=>(e.expense_payment_type||'cash')!=='cash'),'amount'))],
+ ['Aprēķinātā vadītāju samaksa',raMoney(raSum(os,'driver_pay'))],['Samaksa apstiprinātās maiņās',raMoney(raSum(closed,'driver_salary'))],
+ ['Dispečers saņēma periodā',raMoney(received)],['Nodots vadībai periodā',raMoney(handed)],['Dispečera kase šobrīd',raMoney(cashBalance)],
+ ['Adak parāds no perioda pasūtījumiem',raMoney(raSum(os,'partner_debt'))],['Adak atlikums pie mašīnām šobrīd',raMoney(raSum(debts,'balance'))],
+ ['Adak atlikums pie dispečera šobrīd',raMoney(adakBalance)],['Dispečers nodeva Adak periodā',raMoney(raSum(at.filter(x=>x.tx_type==='handed_to_adak'),'amount'))],
+ ['Vadītāji nodeva Adak tieši periodā',raMoney(raSum(collections.filter(x=>raInPeriod(x.created_at,a,b)),'amount')-raSum(at.filter(x=>x.tx_type==='received_from_driver'),'amount'))]
+ ])+(missing?raNotice(missing+' līguma pasūtījumiem trūkst tarifa vai kilometru. Aprēķināto summu kopsumma nav pilna.',true):'')+
+ '<p class="muted">Norādītās pasūtījumu cenas un rēķinu apmaksas ir atsevišķi rādītāji; tos nesummējam kā vienu ieņēmumu. Kases un parādu atlikumi ir par visu laiku. Veco apmaksāto rēķinu apmaksas datumi nav rekonstruēti.</p>';
+ });}
+function raServiceNotes(o){return [o.ra_service_note,o.extra_work,Number(o.tow_ins)>0?'Ratiņi: '+o.tow_ins:'',o.jurmala_entry?'Jūrmala':'',o.night_service?'Nakts tarifs':'',o.ra_jump_start?'Piestartēšana/Akumulatora uzlāde':'',o.ra_tyre_service?'Riepu maiņa/Piepumpēšana':'',Number(o.ra_wait_hours)>0?'Gaidīšana: '+o.ra_wait_hours+' st.':'',Number(o.ra_other_amount)>0?'Citi pakalpojumi: '+raMoney(o.ra_other_amount):'',o.customer_payment_comment].filter(Boolean).join('\n');}
+async function loadOwnerClientReport(){return raLoad('ownerClientReport',async()=>{
+ const cid=Number(v('ownerClient'));RA.rows=[];RA.reportKey=null;if(!cid)return raNotice('Izvēlies klientu.');const {a,b}=raDates('ownerClient');
+ const [rows,invoices,payments]=await Promise.all([raRpc('ra_client_report',{p_client:cid,p_from:a,p_to:b}),raAll('client_invoices'),raAll('ra_invoice_payments')]);if(Number(v('ownerClient'))!==cid||v('ownerClientFrom')!==a||v('ownerClientTo')!==b)return '';
+ RA.invoices=invoices;RA.payments=payments;
+ RA.rows=rows;RA.reportKey=[cid,a,b].join('|');
+ const missing=rows.filter(o=>o.charge?.issue||o.charge?.amount_net==null),good=rows.filter(o=>!missing.includes(o));
+ const ci=invoices.filter(i=>Number(i.client_id)===cid);
+ const summary=raCards([['Pasūtījumi',rows.length],['Kilometri',raSum(rows,'kilometers').toFixed(1)],['Aprēķināts bez PVN',raMoney(good.reduce((s,o)=>s+Number(o.charge.amount_net),0))],['Bez rēķina (bez PVN)',raMoney(good.filter(o=>!o.invoice_id).reduce((s,o)=>s+Number(o.charge.amount_net),0))],['Klienta parāds kopā ar PVN',raMoney(ci.reduce((s,i)=>s+raDebt(i),0))],['Klienta rēķini apmaksāti kopā',raMoney(ci.filter(i=>i.status!=='cancelled').reduce((s,i)=>s+raPaid(i),0))]]);
+ return summary+(missing.length?raNotice(missing.length+' pasūtījumiem aprēķins nav pieejams. Papildiniet datus vai tarifu.',true):'')+raTable(['Nr.','Datums','Auto','Maršruts','Km','Pakalpojumi','Evakuators / vadītājs','Dispečers','Bez PVN','PVN','Rēķins','Darbības'],rows.map(o=>[
+ raEsc(o.id),raEsc(raDate(o.completed_at)),raEsc((o.plate||'')+' '+(o.car||'')),raEsc((o.pickup||'')+' → '+(o.destination||'')),raEsc(o.kilometers??'—'),'<span style="white-space:pre-line">'+raEsc(raServiceNotes(o))+'</span>',raEsc((o.vehicle_label||'—')+' / '+(o.driver_name||'—')),raEsc(o.dispatcher_name||'Nav vēsturisko datu'),o.charge?.issue?raEsc(o.charge.issue):raEsc(raMoney(o.charge?.amount_net)),raEsc(raMoney(o.charge?.vat_amount)),o.invoice_id?'#'+Number(o.invoice_id):'Nav',
+ '<button onclick="raServiceEditor('+Number(o.id)+')">Dati</button> <button onclick="raOrderHistory('+Number(o.id)+')">Vēsture</button>'
+ ]));
+ });}
+function raCurrentReport(){const key=[Number(v('ownerClient')),v('ownerClientFrom'),v('ownerClientTo')].join('|');if(!RA.reportKey||RA.reportKey!==key)throw Error('Vispirms ielādējiet aktuālo klienta atskaiti.');return RA.rows;}
+function raField(id,label,value='',type='text',extra=''){return '<label class="field">'+raEsc(label)+'<input id="'+id+'" type="'+type+'" value="'+raEsc(value??'')+'" '+extra+'></label>';}
+function raCheck(id,label,value){return '<label><input id="'+id+'" type="checkbox" '+(value?'checked':'')+'> '+raEsc(label)+'</label>';}
+function raClientEditor(edit=false){const c=edit?RA.clients.find(x=>Number(x.id)===Number(v('ownerClient'))):null;if(edit&&!c){alert('Izvēlies klientu.');return;}
+ const types=[...new Set(RA.clients.map(c=>c.payment_type).filter(Boolean))];
+ raEl('raClientEditor').innerHTML='<div class="panel"><h3>'+ (c?'Labot klientu':'Jauns klients')+'</h3><div class="form">'+raField('rcName','Nosaukums',c?.name)+raField('rcReg','Reģistrācijas numurs',c?.registration_number)+raField('rcAddress','Adrese',c?.billing_address)+raField('rcEmail','Rēķinu e-pasts',c?.billing_email,'email')+'<label class="field">Apmaksas veids<select id="rcType" '+(c?'disabled':'')+'>'+types.map(t=>'<option '+(c?.payment_type===t?'selected':'')+' value="'+raEsc(t)+'">'+raEsc(t)+'</option>').join('')+'</select></label>'+raCheck('rcActive','Aktīvs',c?c.active:true)+'</div><p class="muted">Esoša klienta apmaksas veids saglabājas, jo no tā atkarīgi vēsturiskie kases aprēķini.</p><button class="green" onclick="raSaveClient('+Number(c?.id||0)+')">Saglabāt</button></div>';raEl('raClientEditor').scrollIntoView({block:'nearest'});
 }
-async function loadOwnerOverview(){
-  const box=document.getElementById('ownerOverviewBox'); if(!box)return; ownerDateDefaults();
-  const {f,t}=ownerRange('owner');
-  const [or,cl,vr,cs,dt,ad,dc]=await Promise.all([
-    db.from('orders').select('id,client_id,vehicle_id,price,cash_received,our_share,partner_debt,kilometers,tow_ins,status,completed_at').eq('status','completed').gte('completed_at',f).lte('completed_at',t),
-    db.from('clients').select('id,name,payment_type'), db.from('vehicles').select('id,name,plate'),
-    db.from('cash_settlements').select('company_cash,driver_salary,closed_at').gte('closed_at',f).lte('closed_at',t),
-    db.from('dispatcher_cash_transactions').select('tx_type,amount,created_at').gte('created_at',f).lte('created_at',t),
-    db.from('adak_debt_events').select('event_type,amount,created_at').gte('created_at',f).lte('created_at',t),
-    db.from('adak_dispatcher_transactions').select('tx_type,amount,created_at').gte('created_at',f).lte('created_at',t)
-  ]);
-  const err=[or,cl,vr,cs,dt,ad,dc].find(x=>x.error); if(err){box.innerHTML='<div class="notice error">'+err.error.message+'</div>';return;}
-  const clients=cl.data||[], orders=or.data||[];
-  let cash=0,bank=0,partner=0,total=0,km=0;
-  for(const o of orders){const c=clients.find(x=>Number(x.id)===Number(o.client_id)); const p=c?.payment_type||''; const amount=Number(o.cash_received||o.price||0); total+=Number(o.price||0);km+=Number(o.kilometers||0); if(p==='cash')cash+=amount; else if(p==='partner')partner+=Number(o.partner_debt||0); else bank+=Number(o.price||0);}
-  const salary=(cs.data||[]).reduce((a,x)=>a+Number(x.driver_salary||0),0);
-  const dispReceived=(dt.data||[]).filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
-  const toOwner=(dt.data||[]).filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
-  const adakHanded=(dc.data||[]).filter(x=>x.tx_type==='handed_to_adak').reduce((a,x)=>a+Number(x.amount||0),0);
-  box.innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${orders.length}</b></div><div class="finance-card">Apgrozījums<br><b>€${total.toFixed(2)}</b></div><div class="finance-card">Skaidrā naudā<br><b>€${cash.toFixed(2)}</b></div><div class="finance-card">Pārskaitījumi / līgumi<br><b>€${bank.toFixed(2)}</b></div><div class="finance-card">Adak daļa<br><b>€${partner.toFixed(2)}</b></div><div class="finance-card">Nobraukums pasūtījumos<br><b>${km.toFixed(0)} km</b></div><div class="finance-card">Vadītāju algas<br><b>€${salary.toFixed(2)}</b></div><div class="finance-card">Saņēmis dispečers<br><b>€${dispReceived.toFixed(2)}</b></div><div class="finance-card">Nodots vadībai<br><b>€${toOwner.toFixed(2)}</b></div><div class="finance-card">Nodots Adakam<br><b>€${adakHanded.toFixed(2)}</b></div></div>`;
+async function raSaveClient(id){return raRun('client',async()=>{const p={id:id||null,name:v('rcName'),payment_type:v('rcType'),registration_number:v('rcReg'),billing_address:v('rcAddress'),billing_email:v('rcEmail'),active:raEl('rcActive').checked};const cid=await raRpc('ra_save_client',{p});await raClientOptions();raEl('ownerClient').value=cid;raEl('raClientEditor').innerHTML='';await loadOwnerClientReport();});}
+function raServiceEditor(id){const o=RA.rows.find(o=>Number(o.id)===id);if(!o)return;raEl('raServices').innerHTML='<div class="panel"><h3>Pasūtījums #'+id+'</h3>'+(o.invoice_id?raNotice('Pasūtījums ir rēķinā. Pakalpojumu summas ir fiksētas.'):'')+'<div class="form">'+raField('rsKm','Kilometri',o.kilometers,'number','min="0" step="0.01"')+raField('rsTow','Ratiņi, gab.',o.tow_ins??0,'number','min="0" step="1"')+raCheck('rsJurmala','Jūrmala',o.jurmala_entry)+raCheck('rsNight','Nakts',o.night_service)+raCheck('rsJump','Piestartēšana',o.ra_jump_start)+raCheck('rsTyre','Riepu maiņa',o.ra_tyre_service)+raField('rsWait','Gaidīšana, stundas',o.ra_wait_hours??0,'number','min="0" step="0.01"')+raField('rsOther','Citi pakalpojumi bez PVN, €',o.ra_other_amount??0,'number','min="0" step="0.01"')+raField('rsNote','Piezīme',o.ra_service_note)+'</div><p class="muted">Izvilkšana no sākotnējā pasūtījuma: '+raEsc(raMoney(o.extra_work_amount))+'; aprēķinā iekļauta atsevišķi. Vadītāja samaksa un faktiskā kase šeit netiek pārrēķināta.</p>'+(!o.invoice_id?'<button class="green" onclick="raSaveServices('+id+')">Saglabāt pakalpojumu datus</button>':'')+'</div>';raEl('raServices').scrollIntoView({block:'nearest'});}
+function raNumber(id){const raw=v(id);const n=Number(raw);if(raw===''||!Number.isFinite(n)||n<0)throw Error('Ievadiet nenegatīvu skaitli: '+id);return n;}
+async function raSaveServices(id){return raRun('services',async()=>{const p={kilometers:v('rsKm')===''?null:raNumber('rsKm'),tow_ins:raNumber('rsTow'),jurmala_entry:raEl('rsJurmala').checked,night_service:raEl('rsNight').checked,ra_jump_start:raEl('rsJump').checked,ra_tyre_service:raEl('rsTyre').checked,ra_wait_hours:raNumber('rsWait'),ra_other_amount:raNumber('rsOther'),ra_service_note:v('rsNote')};await raRpc('ra_save_services',{p_order:id,p});raEl('raServices').innerHTML='';await loadOwnerClientReport();});}
+async function raOrderHistory(id){return raLoad('raOrderAudit',async()=>{const r=await db.from('order_audit_log').select('*').eq('order_id',id).order('changed_at',{ascending:false}).limit(200);if(r.error)throw r.error;return '<h3>Pasūtījuma #'+id+' pēdējās 200 darbības</h3>'+raTable(['Laiks','Lietotājs','Darbība','Mainītie lauki'],r.data.map(x=>[raEsc(new Date(x.changed_at).toLocaleString('lv-LV')),raEsc(x.actor_name||RA.profiles.find(p=>p.id===x.actor_id)?.display_name||x.actor_id||'Nav datu'),raEsc(x.action),raEsc(x.before_data&&x.after_data?Object.keys(x.after_data).filter(k=>JSON.stringify(x.before_data[k])!==JSON.stringify(x.after_data[k])).map(k=>k+': '+JSON.stringify(x.before_data[k])+' → '+JSON.stringify(x.after_data[k])).join('; '):'Vecam ierakstam nav lauku vēstures') ]));});}
+async function loadOwnerFleet(){return raLoad('ownerFleetBox',async()=>{const {a,b}=raDates();const [vs,orders]=await Promise.all([raAll('vehicles'),raAll('orders')]);const os=orders.filter(o=>o.status==='completed'&&raInPeriod(o.completed_at,a,b));return raNotice(a+' — '+b)+vs.map(vehicle=>{const rows=os.filter(o=>Number(o.vehicle_id)===Number(vehicle.id));return '<details class="panel"><summary><b>'+raEsc(vehicle.name+' '+vehicle.plate)+'</b> · '+rows.length+' pasūtījumi · '+raSum(rows,'kilometers').toFixed(1)+' km</summary>'+raTable(['Nr.','Datums','Auto','No','Uz','Km'],rows.map(o=>[raEsc(o.id),raEsc(raDate(o.completed_at)),raEsc(o.car),raEsc(o.pickup),raEsc(o.destination),raEsc(o.kilometers??'Nav datu')]))+'</details>';}).join('')+raNotice('Bez norādītas mašīnas: '+os.filter(o=>!o.vehicle_id).length+' pasūtījumi.');});}
+const raTariffFields={city_base:'tariffBase',km_rate:'tariffKm',tow_in_rate:'tariffTow',jurmala_fee:'tariffJurmala',night_fee:'tariffNight',night_percent:'tariffNightPercent',minimum_price:'tariffMin',vat_rate:'tariffVat',jump_start_fee:'tariffJump',tyre_fee:'tariffTyre',wait_hour_rate:'tariffWait'};
+async function saveTariff(){return raRun('tariff',async()=>{const p={client_id:Number(v('tariffClient')),valid_from:v('tariffFrom'),note:v('tariffNote')};if(!p.client_id||!p.valid_from)throw Error('Izvēlies klientu un datumu.');for(const [k,id] of Object.entries(raTariffFields))p[k]=raNumber(id);await raRpc('ra_save_tariff',{p});raEl('tariffMsg').innerHTML=raNotice('Tarifs saglabāts. Iepriekš fiksētie aprēķini saglabā savu tarifu.');await loadTariffs();});}
+async function loadTariffs(){return raLoad('tariffList',async()=>{const rows=await raAll('client_tariffs');return raTable(['Klients','No / līdz','Bāze','€/km','Ratiņi/gab.','Jūrmala','Nakts € / %','Starts / riepas','Gaidīšana/st.','Minimums','PVN','Piezīme'],rows.reverse().map(t=>[raEsc(RA.clients.find(c=>Number(c.id)===Number(t.client_id))?.name||t.client_id),raEsc(t.valid_from+' / '+(t.valid_to||'nākamais tarifs')),raEsc(raMoney(t.city_base)),raEsc(t.km_rate),raEsc(raMoney(t.tow_in_rate)),raEsc(raMoney(t.jurmala_fee)),raEsc(raMoney(t.night_fee)+' / '+t.night_percent+'%'),raEsc(raMoney(t.jump_start_fee)+' / '+raMoney(t.tyre_fee)),raEsc(raMoney(t.wait_hour_rate)),raEsc(raMoney(t.minimum_price)),raEsc(t.vat_rate+'%'),raEsc(t.note)]));});}
+function raInvoiceEditor(){try{const rows=raCurrentReport().filter(o=>!o.invoice_id);if(!rows.length)throw Error('Nav pasūtījumu bez rēķina.');RA.invoiceRequest=raUUID();raEl('raInvoiceEditor').innerHTML='<div class="panel"><h3>Jauns rēķins</h3><div class="form">'+raField('riNumber','Rēķina numurs')+raField('riDue','Apmaksas termiņš',raDate(),'date')+'</div>'+raTable(['Iekļaut','Pasūtījums','Bez PVN','Ar PVN'],rows.map(o=>['<input class="riOrder" type="checkbox" value="'+Number(o.id)+'" '+(o.charge?.issue||o.charge?.amount_net==null?'disabled':'checked')+'>','#'+Number(o.id),raEsc(o.charge?.issue||raMoney(o.charge?.amount_net)),raEsc(raMoney(o.charge?.amount_total))]))+'<button class="green" onclick="raCreateInvoice()">Saglabāt rēķinu ar izvēlētajiem pasūtījumiem</button></div>';raEl('raInvoiceEditor').scrollIntoView({block:'nearest'});}catch(e){alert(e.message);}}
+async function raCreateInvoice(){return raRun('invoice',async()=>{raCurrentReport();const ids=[...document.querySelectorAll('.riOrder:checked')].map(x=>Number(x.value));if(!ids.length)throw Error('Izvēlies pasūtījumus.');const {a,b}=raDates('ownerClient');const id=await raRpc('ra_create_invoice',{p_client:Number(v('ownerClient')),p_from:a,p_to:b,p_number:v('riNumber'),p_due:v('riDue'),p_orders:ids,p_request:RA.invoiceRequest});raEl('raInvoiceEditor').innerHTML=raNotice('Rēķins #'+id+' saglabāts. Sadaļā Rēķini var atzīmēt nosūtīšanu un apmaksu.');await loadOwnerClientReport();});}
+async function loadOwnerInvoices(){return raLoad('ownerInvoicesBox',async()=>{[RA.invoices,RA.payments]=await Promise.all([raAll('client_invoices'),raAll('ra_invoice_payments')]);return raCards([['Nosūtīto rēķinu parāds ar PVN',raMoney(RA.invoices.reduce((s,i)=>s+raDebt(i),0))],['Kavēts',raMoney(RA.invoices.filter(i=>i.due_date&&i.due_date<raDate()).reduce((s,i)=>s+raDebt(i),0))]])+raTable(['Klients','Nr. / periods','Bez PVN','PVN','Kopā','Apmaksāts','Parāds','Termiņš','Statuss','Darbības'],[...RA.invoices].reverse().map(i=>[
+ raEsc(RA.clients.find(c=>Number(c.id)===Number(i.client_id))?.name||i.client_id),raEsc((i.invoice_number||'#'+i.id)+' / '+i.period_from+' — '+i.period_to),raEsc(raMoney(i.amount_net)),raEsc(raMoney(i.vat_amount)),raEsc(raMoney(i.amount_total)),raEsc(raMoney(raPaid(i))),raEsc(raMoney(raDebt(i))),raEsc(i.due_date||'Nav norādīts'),raEsc(raInvoiceStatus(i))+(i.ra_managed?'':'<br><small>Iepriekšējā versija</small>'),'<button onclick="raInvoiceDetail('+Number(i.id)+')">Detaļas</button> '+(i.status==='draft'?'<button onclick="raInvoiceAction('+Number(i.id)+',\'sent\')">Nosūtīts</button> ':'')+(['sent','overdue'].includes(i.status)?'<button class="green" onclick="raPaymentEditor('+Number(i.id)+')">Apmaksa</button> ':'')+(!['paid','cancelled'].includes(i.status)&&raPaid(i)===0?'<button onclick="raInvoiceAction('+Number(i.id)+',\'cancelled\')">Anulēt</button>':'')
+ ]));});}
+async function raInvoiceAction(id,action){return raRun('invoiceAction',async()=>{if(action==='cancelled'&&!confirm('Anulēt rēķinu? Pasūtījumi būs atkal pieejami jaunam rēķinam.'))return;await raRpc('ra_invoice_action',{p_invoice:id,p_action:action});await loadOwnerInvoices();});}
+function raPaymentEditor(id){const i=RA.invoices.find(x=>Number(x.id)===id);if(!i)return;RA.paymentRequest=raUUID();raEl('raPaymentEditor').innerHTML='<div class="panel"><h3>Apmaksa: '+raEsc(i.invoice_number||id)+'</h3><div class="form">'+raField('rpAmount','Summa, €',raDebt(i).toFixed(2),'number','min="0.01" step="0.01"')+raField('rpDate','Apmaksas datums',raDate(),'date')+raField('rpNote','Maksājuma atsauce / piezīme')+'</div><button class="green" onclick="raSavePayment('+id+')">Reģistrēt saņemto apmaksu</button></div>';raEl('raPaymentEditor').scrollIntoView({block:'nearest'});}
+async function raSavePayment(id){return raRun('payment',async()=>{await raRpc('ra_add_payment',{p_invoice:id,p_amount:raNumber('rpAmount'),p_date:v('rpDate'),p_note:v('rpNote'),p_request:RA.paymentRequest});raEl('raPaymentEditor').innerHTML='';await loadOwnerInvoices();await raInvoiceDetail(id);});}
+async function raInvoiceDetail(id){return raLoad('raInvoiceDetail',async()=>{const r=await db.from('ra_invoice_lines').select('*').eq('invoice_id',id).order('id');if(r.error)throw r.error;const pays=RA.payments.filter(p=>Number(p.invoice_id)===id);return '<h3>Rēķins #'+id+'</h3>'+raTable(['Pasūtījums','Bez PVN','PVN','Kopā','Sasaiste'],r.data.map(l=>['#'+Number(l.order_id),raEsc(raMoney(l.amount_net)),raEsc(raMoney(l.vat_amount)),raEsc(raMoney(l.amount_total)),l.released?'Atbrīvots pēc anulēšanas':'Rēķinā']))+'<h4>Apmaksu vēsture</h4>'+raTable(['Datums','Summa','Atsauce'],pays.map(p=>[raEsc(p.paid_on),raEsc(raMoney(p.amount)),raEsc(p.note)]));});}
+async function loadOwnerDispatchers(){return raLoad('ownerDispatchersBox',async()=>{const {a,b}=raDates();const [drivers,profiles,orders,audit]=await Promise.all([raAll('drivers'),raAll('profiles'),raAll('orders'),raAll('order_audit_log')]);RA.drivers=drivers;RA.profiles=profiles;return '<h3>Vadītāji</h3>'+raTable(['Vārds','Tālrunis','Aktīvs','Auth piesaiste','Darbības'],drivers.map(d=>[raEsc(d.name),raEsc(d.phone),d.active?'Jā':'Nē',raEsc(d.user_id||'Mašīnas konts'),'<button onclick="raStaffEditor(\'driver\','+Number(d.id)+')">Labot / '+(d.active?'deaktivizēt':'aktivizēt')+'</button>']))+'<h3>Dispečeri</h3>'+raNotice('Darba statistika: '+a+' — '+b)+raTable(['Vārds','Aktīvs','Izveidoti pasūtījumi','Izmaiņas','Darbības'],profiles.filter(p=>p.role==='dispatcher').map(p=>[raEsc(p.display_name),p.active?'Jā':'Nē',orders.filter(o=>o.created_by===p.id&&raInPeriod(o.created_at,a,b)).length,audit.filter(o=>o.actor_id===p.id&&o.action==='updated'&&raInPeriod(o.changed_at,a,b)).length,'<button onclick="raStaffEditor(\'dispatcher\',\''+raEsc(p.id)+'\')">Labot / '+(p.active?'deaktivizēt':'aktivizēt')+'</button>']))+'<button onclick="raStaffHistory()">Personāla izmaiņu vēsture</button>';});}
+function raStaffEditor(role,id=null){const s=role==='driver'?RA.drivers.find(d=>Number(d.id)===Number(id)):RA.profiles.find(p=>p.id===id);RA.staffEdit={role,id};raEl('raStaffEditor').innerHTML='<div class="panel"><h3>'+(s?'Labot':'Pievienot')+' '+(role==='driver'?'vadītāju':'dispečeru')+'</h3><div class="form">'+raField('rpName','Vārds',s?.name||s?.display_name)+raField('rpPhone','Tālrunis',s?.phone)+raField('rpUser','Auth UUID'+(role==='driver'?' (nav obligāts)':''),role==='driver'?s?.user_id:s?.id,'text',s&&(role==='dispatcher'||s.user_id)?'readonly':'')+raCheck('rpActive','Aktīvs',s?s.active:true)+'</div><button class="green" onclick="raSaveStaff()">Saglabāt</button></div>';raEl('raStaffEditor').scrollIntoView({block:'nearest'});}
+async function raSaveStaff(){return raRun('staff',async()=>{const p={role:RA.staffEdit.role,id:RA.staffEdit.role==='driver'?RA.staffEdit.id:null,name:v('rpName'),phone:v('rpPhone'),user_id:v('rpUser')||null,active:raEl('rpActive').checked};await raRpc('ra_save_staff',{p});raEl('raStaffEditor').innerHTML='';await loadOwnerDispatchers();await raStaffHistory();});}
+async function raStaffHistory(){return raLoad('raStaffHistory',async()=>{const r=await db.from('ra_staff_history').select('*').order('id',{ascending:false}).limit(200);if(r.error)throw r.error;return '<h3>Pēdējās 200 personāla izmaiņas</h3>'+raTable(['Laiks','Persona','Izmaiņa','Veica'],r.data.map(h=>[raEsc(new Date(h.changed_at).toLocaleString('lv-LV')),raEsc(h.after_data?.name||h.after_data?.display_name||h.entity_id),raEsc(!h.before_data?'Pievienots':h.before_data.active!==h.after_data.active?(h.after_data.active?'Aktivizēts':'Deaktivizēts'):'Laboti dati'),raEsc(h.actor_name||h.actor_id||'SQL administrators')]));});}
+
+// Minimal standards-based XLSX writer, stored ZIP entries; no third-party runtime dependency.
+// User text is always inlineStr, never an Excel formula.
+function raZip(files){
+ const enc=new TextEncoder(),parts=[],central=[];let offset=0;
+ const crc=bytes=>{let c=0xffffffff;for(const b of bytes){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0);}return (c^0xffffffff)>>>0;};
+ const block=(len,values)=>{const a=new Uint8Array(len),v=new DataView(a.buffer);for(const [at,n,size] of values)size===2?v.setUint16(at,n,true):v.setUint32(at,n,true);return a;};
+ for(const [name,value] of Object.entries(files)){const n=enc.encode(name),data=enc.encode(value),check=crc(data);const head=block(30,[[0,0x04034b50,4],[4,20,2],[6,0x800,2],[14,check,4],[18,data.length,4],[22,data.length,4],[26,n.length,2]]);parts.push(head,n,data);const h=block(46,[[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x800,2],[16,check,4],[20,data.length,4],[24,data.length,4],[28,n.length,2],[42,offset,4]]);central.push(h,n);offset+=head.length+n.length+data.length;}
+ const size=central.reduce((s,x)=>s+x.length,0),end=block(22,[[0,0x06054b50,4],[8,Object.keys(files).length,2],[10,Object.keys(files).length,2],[12,size,4],[16,offset,4]]);
+ return new Blob([...parts,...central,end],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
-async function loadOwnerClientReport(){
-  const box=document.getElementById('ownerClientReport'); if(!box)return; const cid=Number(document.getElementById('ownerClient')?.value||0); if(!cid){box.innerHTML='<div class="notice">Izvēlies klientu.</div>';return;} const {f,t}=ownerRange('ownerClient');
-  const [r,vr,dr,pr]=await Promise.all([db.from('orders').select('id,created_at,completed_at,car,plate,pickup,destination,kilometers,tow_ins,jurmala_entry,night_service,price,contractual_amount,cash_received,vehicle_id,driver_id,created_by,status').eq('client_id',cid).gte('created_at',f).lte('created_at',t).order('created_at'),db.from('vehicles').select('id,name,plate'),db.from('drivers').select('id,name'),db.from('profiles').select('id,display_name,role')]);
-  const err=[r,vr,dr,pr].find(x=>x.error);if(err){box.innerHTML='<div class="notice error">'+err.error.message+'</div>';return;} const rows=r.data||[], vehicles=vr.data||[], drivers=dr.data||[], profiles=pr.data||[]; const km=rows.reduce((a,x)=>a+Number(x.kilometers||0),0), sum=rows.reduce((a,x)=>a+Number(x.contractual_amount??x.price??0),0);
-  box.innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${rows.length}</b></div><div class="finance-card">Kilometri<br><b>${km.toFixed(0)}</b></div><div class="finance-card">Aprēķinātā summa<br><b>€${sum.toFixed(2)}</b></div></div><div style="overflow:auto;margin-top:15px"><table><thead><tr><th>Nr.</th><th>Datums</th><th>Auto</th><th>No</th><th>Uz</th><th>Km</th><th>Ratiņi</th><th>Jūrmala</th><th>Nakts</th><th>Evakuators</th><th>Vadītājs</th><th>Dispečers</th><th>Summa</th></tr></thead><tbody>${rows.map(o=>{const vv=vehicles.find(x=>Number(x.id)===Number(o.vehicle_id)),d=drivers.find(x=>Number(x.id)===Number(o.driver_id)),p=profiles.find(x=>x.id===o.created_by);return `<tr><td>${o.id}</td><td>${new Date(o.created_at).toLocaleDateString('lv-LV')}</td><td>${o.car||''} ${o.plate||''}</td><td>${o.pickup||'—'}</td><td>${o.destination||'—'}</td><td>${Number(o.kilometers||0)}</td><td>${Number(o.tow_ins||0)}</td><td>${o.jurmala_entry?'Jā':'—'}</td><td>${o.night_service?'Jā':'—'}</td><td>${vv?vv.name+' '+vv.plate:'—'}</td><td>${d?.name||'—'}</td><td>${p?.display_name||'—'}</td><td>€${Number(o.contractual_amount??o.price??0).toFixed(2)}</td></tr>`}).join('')||'<tr><td colspan="13">Nav pasūtījumu.</td></tr>'}</tbody></table></div>`;
+function raWorkbook(rows,client,a,b){
+ const xml=x=>String(x??'').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+ const cell=(ref,value,style=0,formula=null)=>value===null||value===undefined?'<c r="'+ref+'" s="'+style+'"/>':formula?'<c r="'+ref+'" s="'+style+'"><f>'+xml(formula)+'</f><v>'+value+'</v></c>':typeof value==='number'?'<c r="'+ref+'" s="'+style+'"><v>'+value+'</v></c>':'<c r="'+ref+'" t="inlineStr" s="'+style+'"><is><t xml:space="preserve">'+xml(value)+'</t></is></c>';
+ const row=(r,cells,height=30)=>'<row r="'+r+'" ht="'+height+'" customHeight="1">'+cells.join('')+'</row>';
+ const headers=['Nr.p.k.','Datums','Reģ.Nr.','Auto marka, modelis','Maršruts','Transportēšanas attālums (km)','Maksa par pak. pēc līguma','Maksa par pak. sk. nauda','Piezīmes','Transportlīdzeklis'];
+ let sheet=row(1,[cell('A1','PASŪTĪTĀJS: '+client.name,1)],25)+row(2,[cell('A2','Reģ. Nr. '+(client.registration_number||'—'))])+row(3,[cell('A3',client.billing_address||''),cell('G3','Periods: '+a+' — '+b)])+row(4,[cell('A4','Pabeigšanas datums Latvijas laikā. Līguma summa bez PVN; skaidrā nauda pēc pasūtījumā ievadītā fakta.')]);
+ const missing=rows.filter(o=>o.charge?.issue||o.charge?.amount_net==null).length;
+ sheet+=row(5,[cell('A5',missing?'NEPILNS APRĒĶINS: '+missing+' pasūtījumiem nav tarifa vai datu.':'')]);
+ sheet+=row(12,headers.map((h,i)=>cell(String.fromCharCode(65+i)+'12',h,1)),45);
+ let net=0,vat=0;
+ rows.forEach((o,index)=>{const r=index+13,day=raDate(o.completed_at),date=(Date.parse(day+'T00:00:00Z')-Date.UTC(1899,11,30))/86400000,good=o.charge&&!o.charge.issue&&o.charge.amount_net!=null,n=good?Number(o.charge.amount_net):null,t=good?Number(o.charge.vat_amount):null;net+=n??0;vat+=t??0;
+ const notes=[raServiceNotes(o),!good?'NAV APRĒĶINA: '+(o.charge?.issue||'Trūkst datu'):''].filter(Boolean).join('\n');
+ sheet+=row(r,[cell('A'+r,index+1),cell('B'+r,date,2),cell('C'+r,o.plate||''),cell('D'+r,o.car||''),cell('E'+r,[o.pickup,o.destination].filter(Boolean).join(' UZ ')),cell('F'+r,o.kilometers==null?null:Number(o.kilometers),4),cell('G'+r,n,3),cell('H'+r,o.cash_received==null?null:Number(o.cash_received),3),cell('I'+r,notes),cell('J'+r,o.vehicle_label||''),cell('K'+r,t,3,good?'ROUND(G'+r+'*'+Number(o.charge.tariff_snapshot.vat_rate)+'/100,2)':null)],48);
+ });
+ const last=12+rows.length,end=last+1;sheet+=row(end,[cell('F'+end,'kopā bez pvn',1),cell('G'+end,Number(net.toFixed(2)),3,rows.length?'SUM(G13:G'+last+')':'0')]);sheet+=row(end+1,[cell('F'+(end+1),'pvn',1),cell('G'+(end+1),Number(vat.toFixed(2)),3,rows.length?'SUM(K13:K'+last+')':'0')]);sheet+=row(end+2,[cell('F'+(end+2),'kopā ar pvn',1),cell('G'+(end+2),Number((net+vat).toFixed(2)),3,'SUM(G'+end+':G'+(end+1)+')')]);
+ const root='http://schemas.openxmlformats.org/spreadsheetml/2006/main',rel='http://schemas.openxmlformats.org/package/2006/relationships';
+ return raZip({
+ '[Content_Types].xml':'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+ '_rels/.rels':'<Relationships xmlns="'+rel+'"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+ 'xl/workbook.xml':'<workbook xmlns="'+root+'" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Atskaite" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">Atskaite!$A$1:$J$'+(end+2)+'</definedName><definedName name="_xlnm.Print_Titles" localSheetId="0">Atskaite!$12:$12</definedName></definedNames><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>',
+ 'xl/_rels/workbook.xml.rels':'<Relationships xmlns="'+rel+'"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+ 'xl/styles.xml':'<styleSheet xmlns="'+root+'"><numFmts count="2"><numFmt numFmtId="164" formatCode="dd.mm.yyyy"/><numFmt numFmtId="165" formatCode="#,##0.00"/></numFmts><fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><b/><sz val="10"/><name val="Arial"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8EDF3"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
+ 'xl/worksheets/sheet1.xml':'<worksheet xmlns="'+root+'"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:K'+(end+2)+'"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="12" topLeftCell="A13" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>'+[7,13,13,26,50,13,15,15,30,25,15].map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"'+(i===10?' hidden="1"':'')+'/>').join('')+'</cols><sheetData>'+sheet+'</sheetData>'+(rows.length?'<autoFilter ref="A12:J'+last+'"/>':'')+'<mergeCells count="4"><mergeCell ref="A1:J1"/><mergeCell ref="A2:F2"/><mergeCell ref="A4:J4"/><mergeCell ref="A5:J5"/></mergeCells><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>'
+ });
 }
-async function loadOwnerFleet(){
-  const box=document.getElementById('ownerFleetBox');if(!box)return;ownerDateDefaults();const {f,t}=ownerRange('owner');const [vr,or]=await Promise.all([db.from('vehicles').select('id,name,plate,active').order('id'),db.from('orders').select('vehicle_id,kilometers,price,status,completed_at').eq('status','completed').gte('completed_at',f).lte('completed_at',t)]);if(vr.error||or.error){box.innerHTML='<div class="notice error">'+(vr.error?.message||or.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Evakuators</th><th>Pasūtījumi</th><th>Kilometri</th><th>Apgrozījums</th></tr></thead><tbody>'+(vr.data||[]).map(vv=>{const a=(or.data||[]).filter(o=>Number(o.vehicle_id)===Number(vv.id));return `<tr><td><b>${vv.name} — ${vv.plate}</b></td><td>${a.length}</td><td>${a.reduce((s,o)=>s+Number(o.kilometers||0),0).toFixed(0)} km</td><td>€${a.reduce((s,o)=>s+Number(o.price||0),0).toFixed(2)}</td></tr>`}).join('')+'</tbody></table></div>';
-}
-async function saveTariff(){
-  const row={client_id:Number(v('tariffClient')),valid_from:v('tariffFrom'),city_base:Number(v('tariffBase')||0),km_rate:Number(v('tariffKm')||0),tow_in_rate:Number(v('tariffTow')||0),jurmala_fee:Number(v('tariffJurmala')||0),night_fee:Number(v('tariffNight')||0),minimum_price:Number(v('tariffMin')||0),vat_rate:Number(v('tariffVat')||21),note:v('tariffNote')||null};if(!row.client_id||!row.valid_from){document.getElementById('tariffMsg').innerHTML='<div class="notice error">Izvēlies klientu un datumu.</div>';return;}const r=await db.from('client_tariffs').insert(row);document.getElementById('tariffMsg').innerHTML=r.error?'<div class="notice error">'+r.error.message+'</div>':'<div class="notice">Tarifs saglabāts.</div>';if(!r.error)await loadTariffs();
-}
-async function loadTariffs(){
-  const box=document.getElementById('tariffList');if(!box)return;const [r,c]=await Promise.all([db.from('client_tariffs').select('*').order('valid_from',{ascending:false}),db.from('clients').select('id,name')]);if(r.error||c.error){box.innerHTML='<div class="notice error">'+(r.error?.message||c.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Klients</th><th>No</th><th>Bāze</th><th>€/km</th><th>Ratiņi</th><th>Jūrmala</th><th>Nakts</th><th>Min.</th><th>PVN</th></tr></thead><tbody>'+(r.data||[]).map(x=>`<tr><td>${(c.data||[]).find(y=>Number(y.id)===Number(x.client_id))?.name||x.client_id}</td><td>${x.valid_from}</td><td>€${Number(x.city_base).toFixed(2)}</td><td>€${Number(x.km_rate).toFixed(2)}</td><td>€${Number(x.tow_in_rate).toFixed(2)}</td><td>€${Number(x.jurmala_fee).toFixed(2)}</td><td>€${Number(x.night_fee).toFixed(2)}</td><td>€${Number(x.minimum_price).toFixed(2)}</td><td>${Number(x.vat_rate)}%</td></tr>`).join('')+'</tbody></table></div>';
-}
-async function loadOwnerInvoices(){
-  const box=document.getElementById('ownerInvoicesBox');if(!box)return;const [r,c]=await Promise.all([db.from('client_invoices').select('*').order('created_at',{ascending:false}),db.from('clients').select('id,name')]);if(r.error||c.error){box.innerHTML='<div class="notice error">'+(r.error?.message||c.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Klients</th><th>Periods</th><th>Rēķins</th><th>Bez PVN</th><th>PVN</th><th>Kopā</th><th>Statuss</th></tr></thead><tbody>'+(r.data||[]).map(x=>`<tr><td>${(c.data||[]).find(y=>Number(y.id)===Number(x.client_id))?.name||x.client_id}</td><td>${x.period_from} — ${x.period_to}</td><td>${x.invoice_number||'—'}</td><td>€${Number(x.amount_net).toFixed(2)}</td><td>€${Number(x.vat_amount).toFixed(2)}</td><td><b>€${Number(x.amount_total).toFixed(2)}</b></td><td>${x.status}</td></tr>`).join('')||'<tr><td colspan="7">Rēķinu vēl nav.</td></tr>'+'</tbody></table></div>';
-}
-async function loadOwnerDispatchers(){
-  const box=document.getElementById('ownerDispatchersBox');if(!box)return;const {f,t}=ownerRange('owner');const [p,o,a]=await Promise.all([db.from('profiles').select('id,display_name,role').eq('role','dispatcher'),db.from('orders').select('id,created_by,created_at').gte('created_at',f).lte('created_at',t),db.from('order_audit_log').select('actor_id,action,changed_at').gte('changed_at',f).lte('changed_at',t)]);if(p.error||o.error||a.error){box.innerHTML='<div class="notice error">'+(p.error?.message||o.error?.message||a.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Dispečers</th><th>Izveidoti pasūtījumi</th><th>Izmaiņas</th></tr></thead><tbody>'+(p.data||[]).map(x=>`<tr><td><b>${x.display_name||'Bez vārda'}</b></td><td>${(o.data||[]).filter(y=>y.created_by===x.id).length}</td><td>${(a.data||[]).filter(y=>y.actor_id===x.id&&y.action==='updated').length}</td></tr>`).join('')+'</tbody></table></div>';
-}
+async function raExport(){return raRun('export',async()=>{const rows=raCurrentReport();if(!rows.length)throw Error('Nav pasūtījumu eksportam.');const client=RA.clients.find(c=>Number(c.id)===Number(v('ownerClient'))),{a,b}=raDates('ownerClient');const blob=raWorkbook(rows,client,a,b),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=(client.name+'_'+a+'_'+b).replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.xlsx';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});}
 
 /* ОПЛАТА ВОДИТЕЛЯ */
 async function loadDriverPay(){
@@ -1680,6 +1791,10 @@ clientSelect.options[clientSelect.selectedIndex]?.text||'';
 let o={
 
 created_by:user?.id||null,
+jurmala_entry:document.getElementById('newJurmala').checked,
+night_service:document.getElementById('newNight').checked,
+ra_jump_start:document.getElementById('newJump').checked,
+ra_tyre_service:document.getElementById('newTyre').checked,
 
 client_id:clientId,
 
@@ -1731,6 +1846,8 @@ let r=await db
 .insert(o)
 .select('id')
 .single();
+if(!r.error)for(const id of ['newJurmala','newNight','newJump','newTyre'])document.getElementById(id).checked=false;
+
 
 
 if(r.error){
