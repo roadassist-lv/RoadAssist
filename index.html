@@ -280,12 +280,12 @@ Vadītājs
 
 <label class="field">
 No
-<input id="payFrom" type="date">
+<input id="payFrom" type="text" inputmode="numeric" placeholder="DD.MM.GGGG" maxlength="10">
 </label>
 
 <label class="field">
 Līdz
-<input id="payTo" type="date">
+<input id="payTo" type="text" inputmode="numeric" placeholder="DD.MM.GGGG" maxlength="10">
 </label>
 
 </div>
@@ -628,13 +628,18 @@ async function loadShiftSummary(){
   const box=document.getElementById('shiftSummary');
   if(!box)return;
 
-  const [vr,dr]=await Promise.all([
+  let [vr,dr]=await Promise.all([
     db.from('vehicles').select('id,name,plate,current_driver_id,work_status,active').eq('active',true).order('id'),
     db.from('drivers').select('id,name,active').eq('active',true).order('name')
   ]);
 
+  /* Vecākai shēmai: ja work_status vēl nav pieejams, kopsavilkums tik un tā jāparāda. */
+  if(vr.error && /work_status/i.test(vr.error.message||'')){
+    vr=await db.from('vehicles').select('id,name,plate,current_driver_id,active').eq('active',true).order('id');
+    if(!vr.error) vr.data=(vr.data||[]).map(x=>({...x,work_status:x.current_driver_id?'on_line':'no_driver'}));
+  }
   if(vr.error||dr.error){
-    box.innerHTML='<div class="notice error">Maiņas informāciju neizdevās ielādēt.</div>';
+    box.innerHTML='<div class="notice error">Maiņas informāciju neizdevās ielādēt: '+(vr.error?.message||dr.error?.message||'nezināma kļūda')+'</div>';
     return;
   }
 
@@ -729,6 +734,7 @@ c.data.map(x=>`
 `).join('');
 }
 clientSelect.onchange=updateOrderMoneyFields; updateOrderMoneyFields();
+await loadShiftSummary();
 
 
 /* EVAKUATORI */
@@ -887,11 +893,20 @@ async function loadOwnerDispatchers(){
 }
 
 /* ОПЛАТА ВОДИТЕЛЯ */
+function lvDateToIso(value){
+  const x=String(value||'').trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(x)) return x;
+  const m=x.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if(!m) return '';
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
 async function loadDriverPay(){
 
 let did=Number(v('payDriver'));
-let from=v('payFrom');
-let to=v('payTo');
+let from=lvDateToIso(v('payFrom'));
+let to=lvDateToIso(v('payTo'));
+if(!did){document.getElementById('payResult').innerHTML='<div class="notice error">Izvēlies vadītāju.</div>';return;}
+if(!from||!to){document.getElementById('payResult').innerHTML='<div class="notice error">Ievadi datumus formātā DD.MM.GGGG.</div>';return;}
 
 let [r,sr]=await Promise.all([
 db.from('orders')
@@ -1597,7 +1612,7 @@ document.getElementById('driverOrders').innerHTML=data.map(o=>`<div class="panel
 function updateOrderMoneyFields(){
   const sel=document.getElementById('client');
   const opt=sel?.options[sel.selectedIndex];
-  const isAdak=(opt?.dataset?.payment==='partner') || /adak/i.test(opt?.text||'');
+  const isAdak=(opt?.dataset?.payment==='partner') || /ada[ck]/i.test(opt?.text||'');
   document.querySelectorAll('.adak-only').forEach(x=>x.style.display=isAdak?'':'none');
   if(!isAdak){ const c=document.getElementById('cashReceived'), o=document.getElementById('ourShare'); if(c)c.value=''; if(o)o.value=''; }
 }
