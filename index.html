@@ -719,21 +719,23 @@ let c=await db
 .eq('active',true)
 .order('id');
 
+const clientSelect=document.getElementById('client');
 if(c.error){
 
 msg('Klientu ielāde neizdevās: '+c.error.message,true);
 
 }else if(c.data){
 
-const clientSelect=document.getElementById('client');
-
 clientSelect.innerHTML=
-'<option value="">Izvēlies klientu</option>'+
+'<option value="">Izvēlies klientu</option>'+ 
 c.data.map(x=>`
 <option value="${x.id}" data-payment="${x.payment_type||''}">${x.name}</option>
 `).join('');
 }
-clientSelect.onchange=updateOrderMoneyFields; updateOrderMoneyFields();
+if(clientSelect){
+  clientSelect.onchange=updateOrderMoneyFields;
+  updateOrderMoneyFields();
+}
 await loadShiftSummary();
 
 
