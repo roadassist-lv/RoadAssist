@@ -1043,6 +1043,7 @@ let handed=settlements.reduce((x,o)=>x+Number(o.company_cash||o.total_handed||0)
 let km=a.reduce((x,o)=>x+Number(o.kilometers||0),0);
 let rt=a.reduce((x,o)=>x+Number(o.tow_ins||0),0);
 let ex=a.reduce((x,o)=>x+Number(o.extra_work_amount||0),0);
+let unpaid=Math.max(0,pay-paid);
 
 document.getElementById('payResult').innerHTML=`
 <div class="finance-grid">
@@ -1075,6 +1076,11 @@ Izmaksāts slēgtajos norēķinos<br>
 <div class="finance-card">
 Nodots uzņēmumam<br>
 <b>€${handed.toFixed(2)}</b>
+</div>
+
+<div class="finance-card">
+Neizmaksāts par periodu<br>
+<b>€${unpaid.toFixed(2)}</b>
 </div>
 
 </div>
@@ -1134,7 +1140,7 @@ async function getShiftData(vid){
   os.forEach(o=>{
     const p=o.client?.payment_type||'cash';
     const our=(o.our_share!==null&&o.our_share!==undefined)?Number(o.our_share||0):Number(o.cash_received||0)-Number(o.partner_debt||0);
-    if(p==='cash') cashIncome+=our; else cashlessIncome+=our;
+    if(p==='cash' || p==='partner') cashIncome+=our; else cashlessIncome+=our;
   });
   const cashExpenses=es.filter(e=>(e.expense_payment_type||'cash')==='cash').reduce((a,e)=>a+Number(e.amount||0),0);
   const cashlessExpenses=es.filter(e=>(e.expense_payment_type||'cash')!=='cash').reduce((a,e)=>a+Number(e.amount||0),0);
@@ -1715,10 +1721,22 @@ document.getElementById('driverOrders').innerHTML=data.map(o=>`<div class="panel
 function updateOrderMoneyFields(){
   const sel=document.getElementById('client');
   const opt=sel?.options[sel.selectedIndex];
-  const isAdak=(opt?.dataset?.payment==='partner') || /ada[ck]/i.test(opt?.text||'');
+  const payment=opt?.dataset?.payment||'';
+  const isAdak=payment==='partner' || /ada[ck]/i.test(opt?.text||'');
+  const isContract=payment && payment!=='cash' && !isAdak;
   document.querySelectorAll('.adak-only').forEach(x=>x.style.display=isAdak?'':'none');
-  if(!isAdak){ const c=document.getElementById('cashReceived'), o=document.getElementById('ourShare'); if(c)c.value=''; if(o)o.value=''; }
-  updateOrderTariffHint();
+  const price=document.getElementById('price');
+  const priceField=price?.closest('.field');
+  if(price){
+    price.required=!isContract;
+    price.placeholder=isContract?'Aprēķinās pēc tarifa':'';
+    if(isContract) price.value='';
+  }
+  if(priceField) priceField.style.display=isContract?'none':'';
+  if(!isAdak){
+    const c=document.getElementById('cashReceived'), o=document.getElementById('ourShare');
+    if(c)c.value=''; if(o)o.value='';
+  }
 }
 
 async function updateOrderTariffHint(){
@@ -1757,38 +1775,26 @@ return;
 }
 
 
-/* ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ */
-if(
-!v('car')||
-!v('from')||
-!v('to')||
-!v('price')
-){
-
-msg(
-'Aizpildi automašīnu, atrašanās vietu, galamērķi un cenu.',
-true
-);
-
-return;
-
-}
-
-
-/* ФИНАНСОВАЯ ЛОГИКА: partner (Adak) vs обычный клиент */
+/* FINANŠU LOĢIKA: vispirms nosakām klienta apmaksas tipu */
 const clientInfo=await db.from('clients').select('payment_type').eq('id',clientId).maybeSingle();
 if(clientInfo.error||!clientInfo.data){
   msg('Neizdevās noteikt klienta apmaksas veidu: '+(clientInfo.error?.message||'klients nav atrasts'),true);
   return;
 }
-const isPartner=clientInfo.data.payment_type==='partner';
+const paymentType=clientInfo.data.payment_type||'cash';
+const isPartner=paymentType==='partner';
+const isContract=paymentType!=='cash' && !isPartner;
+
+if(!v('car')||!v('from')||!v('to')||(!isContract&&!v('price'))){
+  msg(isContract?'Aizpildi automašīnu, atrašanās vietu un galamērķi.':'Aizpildi automašīnu, atrašanās vietu, galamērķi un cenu.',true);
+  return;
+}
 
 /* Обычный заказ: все фактически полученные деньги — наша касса.
    Partner/Adak: наша доля задаётся отдельно, остаток идёт Adak. */
-if(!isPartner){ cash=0; our=Number(v('price')||0); }
-/* Долг Adak не фиксируем при создании заказа:
-   окончательная сумма считается только при завершении по реально полученным деньгам. */
-let partnerDebt=0;
+if(!isPartner){ cash=0; our=isContract?0:Number(v('price')||0); }
+const quotedPrice=isContract?0:Number(v('price')||0);
+let partnerDebt=isPartner?Math.max(0,quotedPrice-our):0;
 
 
 /* ПОЛУЧАЕМ НАЗВАНИЕ КЛИЕНТА */
@@ -1825,7 +1831,7 @@ pickup:v('from'),
 
 destination:v('to'),
 
-price:Number(v('price')),
+price:quotedPrice,
 
 vehicle_id:Number(v('vehicle'))||null,
 
@@ -2415,7 +2421,7 @@ async function finish(id){
     return;
   }
 
-  const current=await db.from('orders').select('price,our_share,client_id,driver_id,vehicle_id').eq('id',id).maybeSingle();
+  const current=await db.from('orders').select('price,our_share,client_id,driver_id,vehicle_id,transport_type,jurmala_entry,night_service').eq('id',id).maybeSingle();
   if(current.error||!current.data){
     alert(current.error?.message||'Pasūtījums nav atrasts.');
     return;
@@ -2427,8 +2433,27 @@ async function finish(id){
     return;
   }
 
-  const isPartner=clientInfo.data.payment_type==='partner';
-  const ourShare=isPartner ? Number(current.data.our_share||0) : actual;
+  const paymentType=clientInfo.data.payment_type||'cash';
+  const isPartner=paymentType==='partner';
+  const isContract=paymentType!=='cash' && !isPartner;
+
+  let contractPrice=Number(current.data.price||0);
+  if(isContract){
+    const today=new Date().toISOString().slice(0,10);
+    const tr=await db.from('client_tariffs').select('*').eq('client_id',current.data.client_id).lte('valid_from',today).order('valid_from',{ascending:false}).limit(1).maybeSingle();
+    if(tr.error||!tr.data){ alert('Šim līguma klientam nav aktīva tarifa.'); return; }
+    const t=tr.data;
+    const h=new Date().getHours();
+    const night=!!current.data.night_service || h>=22 || h<7;
+    const van=current.data.transport_type==='van';
+    const base=Number(van?(night?(t.van_night_base??t.night_base):(t.van_day_base??t.day_base)):(night?t.night_base:t.day_base)||0);
+    const rate=Number(van?(night?(t.van_night_km_rate??t.night_km_rate):(t.van_day_km_rate??t.day_km_rate)):(night?t.night_km_rate:t.day_km_rate)||0);
+    const towRate=Number(t.tow_in_rate||0);
+    const towCost=t.tow_in_mode==='fixed_order'?(rt>0?towRate:0):rt*towRate;
+    const jurmala=current.data.jurmala_entry?Number(t.jurmala_fee||0):0;
+    contractPrice=Math.max(Number(t.minimum_price||0),base+km*rate+towCost+jurmala);
+  }
+  const ourShare=isPartner ? Number(current.data.our_share||0) : (isContract?contractPrice:actual);
   const adakDebt=isPartner ? Math.max(0,actual-ourShare) : 0;
 
   const now=new Date();
@@ -2452,7 +2477,8 @@ async function finish(id){
     extra_work:extraWork||null,
     extra_work_amount:extraPay,
     driver_pay:pay,
-    cash_received:actual,
+    price:isContract?contractPrice:Number(current.data.price||0),
+    cash_received:isContract?0:actual,
     our_share:ourShare,
     customer_payment_comment:comment||null,
     partner_debt:adakDebt
