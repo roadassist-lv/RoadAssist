@@ -921,9 +921,66 @@ async function loadTariffs(){
   (r.data||[]).map(x=>`<tr><td>${(c.data||[]).find(y=>Number(y.id)===Number(x.client_id))?.name||x.client_id}</td><td>${x.valid_from}</td><td>€${Number(x.day_base??x.city_base??0).toFixed(2)}</td><td>€${Number(x.night_base??x.city_base??0).toFixed(2)}</td><td>€${Number(x.day_km_rate??x.km_rate??0).toFixed(2)} / €${Number(x.night_km_rate??x.km_rate??0).toFixed(2)}</td><td>€${Number(x.van_day_base??x.day_base??0).toFixed(2)}</td><td>€${Number(x.van_night_base??x.night_base??0).toFixed(2)}</td><td>€${Number(x.van_day_km_rate??x.day_km_rate??0).toFixed(2)} / €${Number(x.van_night_km_rate??x.night_km_rate??0).toFixed(2)}</td><td>€${Number(x.tow_in_rate||0).toFixed(2)}</td><td>${x.tow_in_mode==='fixed_order'?'Fiksēti':'Par gab.'}</td><td>€${Number(x.jurmala_fee||0).toFixed(2)}</td><td>€${Number(x.minimum_price||0).toFixed(2)}</td><td>${Number(x.vat_rate||0)}%</td></tr>`).join('')+'</tbody></table></div>';
 }
 
-async function loadOwnerInvoices(){
-  const box=document.getElementById('ownerInvoicesBox');if(!box)return;const [r,c]=await Promise.all([db.from('client_invoices').select('*').order('created_at',{ascending:false}),db.from('clients').select('id,name')]);if(r.error||c.error){box.innerHTML='<div class="notice error">'+(r.error?.message||c.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Klients</th><th>Periods</th><th>Rēķins</th><th>Bez PVN</th><th>PVN</th><th>Kopā</th><th>Statuss</th></tr></thead><tbody>'+(r.data||[]).map(x=>`<tr><td>${(c.data||[]).find(y=>Number(y.id)===Number(x.client_id))?.name||x.client_id}</td><td>${x.period_from} — ${x.period_to}</td><td>${x.invoice_number||'—'}</td><td>€${Number(x.amount_net).toFixed(2)}</td><td>€${Number(x.vat_amount).toFixed(2)}</td><td><b>€${Number(x.amount_total).toFixed(2)}</b></td><td>${x.status}</td></tr>`).join('')||'<tr><td colspan="7">Rēķinu vēl nav.</td></tr>'+'</tbody></table></div>';
+let raV8Report=null, raV8Invoices=[], raV8Generation=0, raV8Saving=false;
+function raV8Escape(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function raV8Money(x){return x==null?'—':'€'+Number(x).toFixed(2);}
+function raV8Today(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Riga'}).format(new Date());}
+function raV8Table(r){
+ return `<h3>${raV8Escape(r.client)} · ${raV8Escape(r.month.slice(0,7))}</h3><div style="overflow:auto"><table><thead><tr><th>№</th><th>Datums</th><th>Valsts Nr.</th><th>Marka / modelis</th><th>Maršruts</th><th>km</th><th>Līgumcena bez PVN</th><th>Skaidrā naudā saņemts</th><th>Piezīmes / papilddarbi</th><th>Evakuators</th><th>PVN</th></tr></thead><tbody>${r.lines.map((o,i)=>`<tr><td>${i+1}<br><small>#${raV8Escape(o.id)}</small></td><td>${raV8Escape(o.date)}</td><td>${raV8Escape(o.plate)}</td><td>${raV8Escape(o.car)}</td><td>${raV8Escape(o.route)}</td><td>${raV8Escape(o.km??0)}</td><td>${raV8Money(o.net)}</td><td>${Number(o.cash||0)?raV8Money(o.cash):'—'}</td><td>${raV8Escape(o.notes)}${o.issue?'<div class="notice error">'+raV8Escape(o.issue)+'</div>':''}</td><td>${raV8Escape(o.vehicle)}</td><td>${raV8Escape(o.vat_rate??'—')}%</td></tr>`).join('')||'<tr><td colspan="11">Šajā mēnesī nav pabeigtu pasūtījumu.</td></tr>'}</tbody></table></div><div class="finance-grid" style="margin-top:15px"><div class="finance-card">Bez PVN<br><b>${raV8Money(r.net)}</b></div><div class="finance-card">PVN<br><b>${raV8Money(r.vat)}</b></div><div class="finance-card">Kopā ar PVN<br><b>${raV8Money(r.total)}</b></div></div>`;
 }
+async function loadOwnerInvoices(){
+ const box=document.getElementById('ownerInvoicesBox');if(!box)return;
+ if(!document.getElementById('raV8Client')){
+  box.innerHTML='<div class="form"><label class="field">Līgumklients<select id="raV8Client" onchange="raV8Load()"><option value="">Izvēlies klientu</option></select></label><label class="field">Mēnesis<input id="raV8Month" type="month" onchange="raV8Load()"></label><label class="field">Rēķina numurs<input id="raV8Number" maxlength="100"></label><label class="field">Apmaksāt līdz<input id="raV8Due" type="date"></label></div><button class="primary" style="margin-top:12px" onclick="raV8Load()">ATJAUNOT</button><div class="notice" style="margin-top:12px">Periods pēc pabeigšanas datuma (Latvijas laiks). Saglabātā līgumcena ir bez PVN. Skaidrā nauda ir informatīva un netiek pieskaitīta vēlreiz. Papilddarba piemaksa vadītājam netiek pieskaitīta klienta rēķinam.</div><div id="raV8Message" role="status"></div><div id="raV8Register"></div><button id="raV8Prepare" class="green" style="margin-top:15px" disabled onclick="raV8Prepare()">SAGATAVOT RĒĶINU</button><h3>Saglabātie rēķini</h3><div id="raV8Saved"></div><div id="raV8Snapshot"></div>';
+  document.getElementById('raV8Month').value=raV8Today().slice(0,7);
+  const due=new Date(raV8Today()+'T12:00:00Z');due.setUTCDate(due.getUTCDate()+14);document.getElementById('raV8Due').value=due.toISOString().slice(0,10);
+ }
+ try{
+  const c=await db.from('clients').select('id,name,payment_type').order('name');if(c.error)throw c.error;
+  const select=document.getElementById('raV8Client'), previous=select.value;
+  select.innerHTML='<option value="">Izvēlies klientu</option>'+(c.data||[]).filter(x=>x.payment_type&&!['cash','partner'].includes(x.payment_type)&&!/(privāt|privat|ada[ck])/i.test(x.name)).map(x=>`<option value="${raV8Escape(x.id)}">${raV8Escape(x.name)}</option>`).join('');select.value=previous;
+  await raV8Load();
+ }catch(e){document.getElementById('raV8Message').textContent=e.message||String(e);}
+}
+async function raV8Load(){
+ const generation=++raV8Generation;raV8Report=null;
+ const cid=document.getElementById('raV8Client').value, month=document.getElementById('raV8Month').value;
+ const msg=document.getElementById('raV8Message'), register=document.getElementById('raV8Register');
+ document.getElementById('raV8Prepare').disabled=true;document.getElementById('raV8Snapshot').innerHTML='';
+ document.getElementById('raV8Saved').innerHTML='';msg.textContent='';register.innerHTML='';
+ if(!cid||!/^\d{4}-\d{2}$/.test(month)){msg.textContent='Izvēlies līgumklientu un mēnesi.';return;}
+ msg.textContent='Ielādē...';
+ try{
+  const [r,i]=await Promise.all([db.rpc('ra_v8_register',{p_client:Number(cid),p_month:month+'-01'}),db.from('client_invoices').select('*').eq('client_id',cid).order('created_at',{ascending:false})]);
+  if(generation!==raV8Generation)return;if(r.error||i.error)throw r.error||i.error;
+  raV8Report=r.data;raV8Invoices=i.data||[];register.innerHTML=raV8Table(r.data);
+  msg.textContent=r.data.blocked?'Sagatavošana bloķēta: pārbaudi rindu piezīmes un esošos rēķinus.':'';
+  document.getElementById('raV8Prepare').disabled=raV8Saving||r.data.blocked||!r.data.lines.length;
+  document.getElementById('raV8Saved').innerHTML='<div style="overflow:auto"><table><thead><tr><th>Rēķins</th><th>Periods</th><th>Kopā ar PVN</th><th>Apmaksāt līdz</th><th>Statuss</th><th>Darbības</th></tr></thead><tbody>'+raV8Invoices.map((x,index)=>{
+   const status=x.status==='sent'&&x.due_date&&x.due_date<raV8Today()?'overdue':x.status;
+   const label={draft:'Sagatavots',sent:'Nosūtīts',paid:'Apmaksāts',overdue:'Kavēts',cancelled:'Anulēts'}[status]||status;
+   return `<tr><td>${raV8Escape(x.invoice_number)}</td><td>${raV8Escape(x.period_from)} — ${raV8Escape(x.period_to)}</td><td>${raV8Money(x.amount_total)}</td><td>${raV8Escape(x.due_date||'—')}</td><td>${raV8Escape(label)}</td><td>${x.v8_snapshot?`<button onclick="raV8View(${index})">ATVĒRT</button> ${x.status==='draft'?`<button onclick="raV8Status(${index},'sent',this)">ATZĪMĒT NOSŪTĪTU</button>`:['sent','overdue'].includes(x.status)?`<button onclick="raV8Status(${index},'paid',this)">ATZĪMĒT APMAKSĀTU</button>`:''}`:'Iepriekšējās versijas rēķins'}</td></tr>`;
+  }).join('')+'</tbody></table></div>'+(raV8Invoices.length?'':'<p>Rēķinu vēl nav.</p>');
+ }catch(e){if(generation===raV8Generation)msg.textContent=(e.message||String(e))+' Pārbaudi, vai V8 SQL migrācija ir izpildīta.';}
+}
+function raV8View(index){const x=raV8Invoices[index];if(x?.v8_snapshot)document.getElementById('raV8Snapshot').innerHTML='<h3>Rēķins '+raV8Escape(x.invoice_number)+' — saglabāts reģistrs</h3>'+raV8Table(x.v8_snapshot);}
+async function raV8Prepare(){
+ if(raV8Saving||!raV8Report||raV8Report.blocked)return;
+ const number=document.getElementById('raV8Number').value.trim(),due=document.getElementById('raV8Due').value;
+ const msg=document.getElementById('raV8Message');if(!number||!due){msg.textContent='Norādi rēķina numuru un apmaksas datumu.';return;}
+ raV8Saving=true;document.getElementById('raV8Prepare').disabled=true;
+ try{
+  const r=await db.rpc('ra_v8_prepare',{p_client:Number(document.getElementById('raV8Client').value),p_month:raV8Report.month,p_number:number,p_due:due,p_expected:raV8Report});if(r.error)throw r.error;
+  await raV8Load();msg.textContent='Rēķins sagatavots un pasūtījumi piesaistīti.';
+  const index=raV8Invoices.findIndex(x=>String(x.id)===String(r.data));if(index>=0)raV8View(index);
+ }catch(e){msg.textContent=e.message||String(e);}finally{raV8Saving=false;document.getElementById('raV8Prepare').disabled=!raV8Report||raV8Report.blocked||!raV8Report.lines.length;}
+}
+async function raV8Status(index,status,button){
+ const x=raV8Invoices[index];if(!x)return;button.disabled=true;
+ try{const r=await db.rpc('ra_v8_status',{p_invoice:x.id,p_status:status});if(r.error)throw r.error;await raV8Load();}
+ catch(e){document.getElementById('raV8Message').textContent=e.message||String(e);button.disabled=false;}
+}
+
 async function loadOwnerDispatchers(){
   const box=document.getElementById('ownerDispatchersBox');if(!box)return;
   const {f,t}=ownerRange('owner');
