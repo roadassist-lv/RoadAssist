@@ -113,7 +113,7 @@ PIESLĒGTIES
 <button class="tab" onclick="show('ownerFleet',this)">Autoparks</button>
 <button class="tab" onclick="show('ownerTariffs',this)">Tarifi</button>
 <button class="tab" onclick="show('ownerInvoices',this)">Rēķini</button>
-<button class="tab" onclick="show('ownerDispatchers',this)">Dispečeri</button>
+<button class="tab" onclick="show('ownerDispatchers',this)">Personāls</button>
 </div>
 
 <section id="ownerOverview" class="screen"><div class="panel"><h2>Vadības pārskats</h2><div class="form"><label class="field">No<input id="ownerFrom" type="date" onchange="loadOwnerOverview()"></label><label class="field">Līdz<input id="ownerTo" type="date" onchange="loadOwnerOverview()"></label></div><div id="ownerOverviewBox" style="margin-top:15px">Ielādē...</div></div></section>
@@ -121,7 +121,19 @@ PIESLĒGTIES
 <section id="ownerFleet" class="screen"><div class="panel"><h2>Autoparks</h2><div id="ownerFleetBox">Ielādē...</div></div></section>
 <section id="ownerTariffs" class="screen"><div class="panel"><h2>Līgumklientu tarifi</h2><div class="notice">Dienas un nakts cenas tiek norādītas atsevišķi. Ratiņiem izvēlies, vai cena ir par katru gabalu vai viena fiksēta cena par pasūtījumu neatkarīgi no daudzuma.</div><div class="form"><label class="field">Klients<select id="tariffClient"></select></label><label class="field">Spēkā no<input id="tariffFrom" type="date"></label><label class="field">Vieglais — dienas bāze, €<input id="tariffDayBase" type="number" step="0.01" value="0"></label><label class="field">Vieglais — nakts bāze, €<input id="tariffNightBase" type="number" step="0.01" value="0"></label><label class="field">Vieglais — dienā, €/km<input id="tariffDayKm" type="number" step="0.01" value="0"></label><label class="field">Vieglais — naktī, €/km<input id="tariffNightKm" type="number" step="0.01" value="0"></label><label class="field">Buss — dienas bāze, €<input id="tariffVanDayBase" type="number" step="0.01" value="0"></label><label class="field">Buss — nakts bāze, €<input id="tariffVanNightBase" type="number" step="0.01" value="0"></label><label class="field">Buss — dienā, €/km<input id="tariffVanDayKm" type="number" step="0.01" value="0"></label><label class="field">Buss — naktī, €/km<input id="tariffVanNightKm" type="number" step="0.01" value="0"></label><label class="field">Ratiņi, €<input id="tariffTow" type="number" step="0.01" value="0"></label><label class="field">Ratiņu aprēķins<select id="tariffTowMode"><option value="per_item">Par katru gabalu</option><option value="fixed_order">Fiksēti par pasūtījumu</option></select></label><label class="field">Jūrmala, €<input id="tariffJurmala" type="number" step="0.01" value="0"></label><label class="field">Minimālā cena, €<input id="tariffMin" type="number" step="0.01" value="0"></label><label class="field">PVN, %<input id="tariffVat" type="number" step="0.01" value="21"></label><label class="field full">Piezīme<input id="tariffNote"></label></div><button class="green" style="margin-top:12px" onclick="saveTariff()">SAGLABĀT TARIFU</button><div id="tariffMsg" style="margin-top:10px"></div><div id="tariffList" style="margin-top:15px"></div></div></section>
 <section id="ownerInvoices" class="screen"><div class="panel"><h2>Rēķini un klientu parādi</h2><div id="ownerInvoicesBox">Ielādē...</div></div></section>
-<section id="ownerDispatchers" class="screen"><div class="panel"><h2>Dispečeri</h2><p class="muted">Katrs pasūtījums glabā lietotāju, kurš to izveidoja. Izmaiņas tiek saglabātas audita vēsturē.</p><div id="ownerDispatchersBox">Ielādē...</div></div></section>
+<section id="ownerDispatchers" class="screen">
+<div class="panel">
+  <h2>Personāls</h2>
+  <p class="notice">Vadītājus un dispečerus deaktivizējam, saglabājot pasūtījumu vēsturi. Vadītājam, kurš strādā ar mašīnas kontu, personīgs UUID nav vajadzīgs.</p>
+  <div class="tabs">
+    <button onclick="ownerStaffEditor('driver')">Pievienot vadītāju</button>
+    <button onclick="ownerStaffEditor('dispatcher')">Pievienot dispečeru</button>
+  </div>
+  <div id="ownerDispatchersBox">Ielādē...</div>
+  <div id="ownerStaffEditor"></div>
+  <div id="ownerStaffHistory"></div>
+</div>
+</section>
 
 <section id="new" class="screen active">
 
@@ -598,7 +610,7 @@ if(vehicleAccount.data){
 
 const p=await db
 .from('profiles')
-.select('role,display_name')
+.select('role,display_name,active')
 .eq('id',user.id)
 .single();
 
@@ -613,6 +625,14 @@ document.getElementById('app').classList.remove('hide');
 document.getElementById('logoutBtn').classList.remove('hide');
 
 currentProfile=p.data;
+if(p.data.active===false){
+  await db.auth.signOut();
+  document.getElementById('app').classList.add('hide');
+  document.getElementById('login').classList.remove('hide');
+  document.getElementById('logoutBtn').classList.add('hide');
+  document.getElementById('loginMsg').innerHTML='<div class="notice error">Šis darbinieka konts ir deaktivizēts. Sazinies ar vadību.</div>';
+  return;
+}
 if(p.data.role==='owner'){
   sessionMode='owner';
   await initOwner();
@@ -905,7 +925,74 @@ async function loadOwnerInvoices(){
   const box=document.getElementById('ownerInvoicesBox');if(!box)return;const [r,c]=await Promise.all([db.from('client_invoices').select('*').order('created_at',{ascending:false}),db.from('clients').select('id,name')]);if(r.error||c.error){box.innerHTML='<div class="notice error">'+(r.error?.message||c.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Klients</th><th>Periods</th><th>Rēķins</th><th>Bez PVN</th><th>PVN</th><th>Kopā</th><th>Statuss</th></tr></thead><tbody>'+(r.data||[]).map(x=>`<tr><td>${(c.data||[]).find(y=>Number(y.id)===Number(x.client_id))?.name||x.client_id}</td><td>${x.period_from} — ${x.period_to}</td><td>${x.invoice_number||'—'}</td><td>€${Number(x.amount_net).toFixed(2)}</td><td>€${Number(x.vat_amount).toFixed(2)}</td><td><b>€${Number(x.amount_total).toFixed(2)}</b></td><td>${x.status}</td></tr>`).join('')||'<tr><td colspan="7">Rēķinu vēl nav.</td></tr>'+'</tbody></table></div>';
 }
 async function loadOwnerDispatchers(){
-  const box=document.getElementById('ownerDispatchersBox');if(!box)return;const {f,t}=ownerRange('owner');const [p,o,a]=await Promise.all([db.from('profiles').select('id,display_name,role').eq('role','dispatcher'),db.from('orders').select('id,created_by,created_at').gte('created_at',f).lte('created_at',t),db.from('order_audit_log').select('actor_id,action,changed_at').gte('changed_at',f).lte('changed_at',t)]);if(p.error||o.error||a.error){box.innerHTML='<div class="notice error">'+(p.error?.message||o.error?.message||a.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Dispečers</th><th>Izveidoti pasūtījumi</th><th>Izmaiņas</th></tr></thead><tbody>'+(p.data||[]).map(x=>`<tr><td><b>${x.display_name||'Bez vārda'}</b></td><td>${(o.data||[]).filter(y=>y.created_by===x.id).length}</td><td>${(a.data||[]).filter(y=>y.actor_id===x.id&&y.action==='updated').length}</td></tr>`).join('')+'</tbody></table></div>';
+  const box=document.getElementById('ownerDispatchersBox');if(!box)return;
+  const {f,t}=ownerRange('owner');
+  const [dr,p,o,a]=await Promise.all([
+    db.from('drivers').select('id,name,phone,active,user_id').order('name'),
+    db.from('profiles').select('id,display_name,role,active').eq('role','dispatcher').order('display_name'),
+    db.from('orders').select('id,created_by,created_at').gte('created_at',f).lte('created_at',t),
+    db.from('order_audit_log').select('actor_id,action,changed_at').gte('changed_at',f).lte('changed_at',t)
+  ]);
+  const err=dr.error||p.error||o.error||a.error;
+  if(err){box.innerHTML='<div class="notice error">'+err.message+'</div>';return;}
+  window.ownerStaffDrivers=dr.data||[];
+  window.ownerStaffDispatchers=p.data||[];
+  const driversRows=(dr.data||[]).map(d=>`<tr><td><b>${d.name||'—'}</b></td><td>${d.phone||'—'}</td><td>${d.active?'Jā':'Nē'}</td><td>${d.user_id||'Mašīnas konts'}</td><td><button onclick="ownerStaffEditor('driver',${d.id})">Labot / ${d.active?'deaktivizēt':'aktivizēt'}</button></td></tr>`).join('');
+  const dispRows=(p.data||[]).map(x=>`<tr><td><b>${x.display_name||'Bez vārda'}</b></td><td>${x.active===false?'Nē':'Jā'}</td><td>${(o.data||[]).filter(y=>y.created_by===x.id).length}</td><td>${(a.data||[]).filter(y=>y.actor_id===x.id&&y.action==='updated').length}</td><td><button onclick="ownerStaffEditor('dispatcher','${x.id}')">Labot / ${x.active===false?'aktivizēt':'deaktivizēt'}</button></td></tr>`).join('');
+  box.innerHTML=
+    '<h3>Vadītāji</h3><div style="overflow:auto"><table><thead><tr><th>Vārds</th><th>Tālrunis</th><th>Aktīvs</th><th>Auth piesaiste</th><th>Darbības</th></tr></thead><tbody>'+driversRows+'</tbody></table></div>'+
+    '<h3>Dispečeri</h3><div class="notice">Darba statistika izvēlētajā vadības periodā.</div><div style="overflow:auto"><table><thead><tr><th>Vārds</th><th>Aktīvs</th><th>Izveidoti pasūtījumi</th><th>Izmaiņas</th><th>Darbības</th></tr></thead><tbody>'+dispRows+'</tbody></table></div>'+
+    '<button style="margin-top:12px" onclick="ownerStaffHistory()">Personāla izmaiņu vēsture</button>';
+}
+
+function ownerStaffEditor(role,id=null){
+  const list=role==='driver'?(window.ownerStaffDrivers||[]):(window.ownerStaffDispatchers||[]);
+  const st=role==='driver'?list.find(x=>Number(x.id)===Number(id)):list.find(x=>x.id===id);
+  window.ownerStaffEdit={role,id};
+  const name=st?(st.name||st.display_name||''):'';
+  const phone=st?.phone||'';
+  const uid=role==='driver'?(st?.user_id||''):(st?.id||'');
+  const active=st?st.active!==false:true;
+  document.getElementById('ownerStaffEditor').innerHTML=`
+    <div class="panel" style="margin-top:15px">
+      <h3>${st?'Labot':'Pievienot'} ${role==='driver'?'vadītāju':'dispečeru'}</h3>
+      <div class="form">
+        <label class="field">Vārds<input id="staffName" value="${String(name).replace(/"/g,'&quot;')}"></label>
+        ${role==='driver'?`<label class="field">Tālrunis<input id="staffPhone" value="${String(phone).replace(/"/g,'&quot;')}"></label>`:''}
+        <label class="field full">Auth UUID${role==='driver'?' (nav obligāts)':''}<input id="staffUser" value="${String(uid).replace(/"/g,'&quot;')}" ${st&&(role==='dispatcher'||st.user_id)?'readonly':''}></label>
+        <label class="field full"><span><input id="staffActive" type="checkbox" ${active?'checked':''}> Aktīvs</span></label>
+      </div>
+      <button class="green" style="margin-top:12px" onclick="ownerSaveStaff()">Saglabāt</button>
+    </div>`;
+  document.getElementById('ownerStaffEditor').scrollIntoView({block:'nearest'});
+}
+
+async function ownerSaveStaff(){
+  const e=window.ownerStaffEdit||{};
+  const p={
+    role:e.role,
+    id:e.role==='driver'?e.id:null,
+    name:(document.getElementById('staffName')?.value||'').trim(),
+    phone:e.role==='driver'?(document.getElementById('staffPhone')?.value||'').trim():null,
+    user_id:(document.getElementById('staffUser')?.value||'').trim()||null,
+    active:!!document.getElementById('staffActive')?.checked
+  };
+  if(!p.name){alert('Ievadi vārdu.');return;}
+  const r=await db.rpc('ra_save_staff',{p});
+  if(r.error){alert(r.error.message);return;}
+  document.getElementById('ownerStaffEditor').innerHTML='';
+  await loadOwnerDispatchers();
+  await ownerStaffHistory();
+}
+
+async function ownerStaffHistory(){
+  const box=document.getElementById('ownerStaffHistory');if(!box)return;
+  const r=await db.from('ra_staff_history').select('*').order('id',{ascending:false}).limit(200);
+  if(r.error){box.innerHTML='<div class="notice error">'+r.error.message+'</div>';return;}
+  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  box.innerHTML='<h3>Pēdējās 200 personāla izmaiņas</h3><div style="overflow:auto"><table><thead><tr><th>Laiks</th><th>Persona</th><th>Izmaiņa</th><th>Veica</th></tr></thead><tbody>'+
+    (r.data||[]).map(h=>`<tr><td>${esc(new Date(h.changed_at).toLocaleString('lv-LV'))}</td><td>${esc(h.after_data?.name||h.after_data?.display_name||h.entity_id)}</td><td>${esc(!h.before_data?'Pievienots':h.before_data.active!==h.after_data.active?(h.after_data.active?'Aktivizēts':'Deaktivizēts'):'Laboti dati')}</td><td>${esc(h.actor_name||h.actor_id||'SQL administrators')}</td></tr>`).join('')+
+    '</tbody></table></div>';
 }
 
 /* ОПЛАТА ВОДИТЕЛЯ */
