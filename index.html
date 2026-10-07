@@ -49,6 +49,10 @@ main{padding:12px}
 @media(max-width:700px){
 .finance-grid{grid-template-columns:1fr 1fr}
 }
+.ra-history{max-height:240px;overflow:auto;border:1px solid #ccd3da;border-radius:6px;background:white}
+.ra-history[hidden]{display:none}
+.ra-history button{display:block;width:100%;text-align:left;background:white;color:#17212b;border:0;border-radius:0;padding:10px;cursor:pointer}
+.ra-history button:hover,.ra-history button[aria-selected="true"]{background:#e7f1ff}
 </style>
 </head>
 
@@ -156,12 +160,12 @@ Klients
 
 <label class="field">
 Tālrunis
-<input id="phone">
+<input id="phone" type="tel" autocomplete="off">
 </label>
 
 <label class="field">
 Automašīna
-<input id="car">
+<input id="car" autocomplete="off">
 </label>
 
 <label class="field">
@@ -302,12 +306,12 @@ Vadītājs
 
 <label class="field">
 No
-<input id="payFrom" type="text" inputmode="numeric" placeholder="DD.MM.GGGG" maxlength="10">
+<input id="payFrom" type="date">
 </label>
 
 <label class="field">
 Līdz
-<input id="payTo" type="text" inputmode="numeric" placeholder="DD.MM.GGGG" maxlength="10">
+<input id="payTo" type="date">
 </label>
 
 </div>
@@ -901,9 +905,19 @@ async function loadOwnerOverview(){
 }
 async function loadOwnerClientReport(){
   const box=document.getElementById('ownerClientReport'); if(!box)return; const cid=Number(document.getElementById('ownerClient')?.value||0); if(!cid){box.innerHTML='<div class="notice">Izvēlies klientu.</div>';return;} const {f,t}=ownerRange('ownerClient');
-  const [r,vr,dr,pr]=await Promise.all([db.from('orders').select('id,created_at,completed_at,car,plate,pickup,destination,kilometers,tow_ins,jurmala_entry,night_service,price,contractual_amount,cash_received,vehicle_id,driver_id,created_by,status').eq('client_id',cid).gte('created_at',f).lte('created_at',t).order('created_at'),db.from('vehicles').select('id,name,plate'),db.from('drivers').select('id,name'),db.from('profiles').select('id,display_name,role')]);
-  const err=[r,vr,dr,pr].find(x=>x.error);if(err){box.innerHTML='<div class="notice error">'+err.error.message+'</div>';return;} const rows=r.data||[], vehicles=vr.data||[], drivers=dr.data||[], profiles=pr.data||[]; const km=rows.reduce((a,x)=>a+Number(x.kilometers||0),0), sum=rows.reduce((a,x)=>a+Number(x.contractual_amount??x.price??0),0);
-  box.innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${rows.length}</b></div><div class="finance-card">Kilometri<br><b>${km.toFixed(0)}</b></div><div class="finance-card">Aprēķinātā summa<br><b>€${sum.toFixed(2)}</b></div></div><div style="overflow:auto;margin-top:15px"><table><thead><tr><th>Nr.</th><th>Datums</th><th>Auto</th><th>No</th><th>Uz</th><th>Km</th><th>Ratiņi</th><th>Jūrmala</th><th>Nakts</th><th>Evakuators</th><th>Vadītājs</th><th>Dispečers</th><th>Summa</th></tr></thead><tbody>${rows.map(o=>{const vv=vehicles.find(x=>Number(x.id)===Number(o.vehicle_id)),d=drivers.find(x=>Number(x.id)===Number(o.driver_id)),p=profiles.find(x=>x.id===o.created_by);return `<tr><td>${o.id}</td><td>${new Date(o.created_at).toLocaleDateString('lv-LV')}</td><td>${o.car||''} ${o.plate||''}</td><td>${o.pickup||'—'}</td><td>${o.destination||'—'}</td><td>${Number(o.kilometers||0)}</td><td>${Number(o.tow_ins||0)}</td><td>${o.jurmala_entry?'Jā':'—'}</td><td>${o.night_service?'Jā':'—'}</td><td>${vv?vv.name+' '+vv.plate:'—'}</td><td>${d?.name||'—'}</td><td>${p?.display_name||'—'}</td><td>€${Number(o.contractual_amount??o.price??0).toFixed(2)}</td></tr>`}).join('')||'<tr><td colspan="13">Nav pasūtījumu.</td></tr>'}</tbody></table></div>`;
+  const [r,vr,dr,pr]=await Promise.all([db.from('orders').select('*').eq('client_id',cid).gte('created_at',f).lte('created_at',t).order('created_at'),db.from('vehicles').select('id,name,plate'),db.from('drivers').select('id,name'),db.from('profiles').select('id,display_name,role')]);
+  const err=[r,vr,dr,pr].find(x=>x.error);if(err){box.innerHTML='<div class="notice error">'+err.error.message+'</div>';return;} const rows=r.data||[];
+  try{
+    const client=await db.from('clients').select('payment_type').eq('id',cid).single();if(client.error)throw client.error;
+    const contract=client.data.payment_type&&!['cash','partner'].includes(client.data.payment_type);
+    const tariffs=contract?await raClientTariffs(cid):[];
+    for(const order of rows){
+      try{order.raAmount=contract?raContractPrice(order,tariffs).net:Number(order.contractual_amount??order.price??0);}
+      catch(e){order.raIssue=e.message||String(e);order.raAmount=null;}
+    }
+  }catch(e){box.textContent=e.message||String(e);return;}
+  const vehicles=vr.data||[], drivers=dr.data||[], profiles=pr.data||[]; const km=rows.reduce((a,x)=>a+Number(x.kilometers||0),0), sum=rows.some(x=>x.raAmount===null)?null:rows.reduce((a,x)=>a+x.raAmount,0);
+  box.innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${rows.length}</b></div><div class="finance-card">Kilometri<br><b>${km.toFixed(0)}</b></div><div class="finance-card">Aprēķinātā summa<br><b>${sum===null?'Nav aprēķināts':raV8Money(sum)}</b></div></div><div style="overflow:auto;margin-top:15px"><table><thead><tr><th>Nr.</th><th>Datums</th><th>Auto</th><th>No</th><th>Uz</th><th>Km</th><th>Ratiņi</th><th>Jūrmala</th><th>Nakts</th><th>Evakuators</th><th>Vadītājs</th><th>Dispečers</th><th>Summa</th></tr></thead><tbody>${rows.map(o=>{const vv=vehicles.find(x=>Number(x.id)===Number(o.vehicle_id)),d=drivers.find(x=>Number(x.id)===Number(o.driver_id)),p=profiles.find(x=>x.id===o.created_by);return `<tr><td>${o.id}</td><td>${new Date(o.created_at).toLocaleDateString('lv-LV')}</td><td>${o.car||''} ${o.plate||''}</td><td>${o.pickup||'—'}</td><td>${o.destination||'—'}</td><td>${Number(o.kilometers||0)}</td><td>${Number(o.tow_ins||0)}</td><td>${o.jurmala_entry?'Jā':'—'}</td><td>${o.night_service?'Jā':'—'}</td><td>${vv?vv.name+' '+vv.plate:'—'}</td><td>${d?.name||'—'}</td><td>${p?.display_name||'—'}</td><td>${o.raIssue?'<span class="notice error">'+raV8Escape(o.raIssue)+'</span>':raV8Money(o.raAmount)}</td></tr>`}).join('')||'<tr><td colspan="13">Nav pasūtījumu.</td></tr>'}</tbody></table></div>`;
 }
 async function loadOwnerFleet(){
   const box=document.getElementById('ownerFleetBox');if(!box)return;ownerDateDefaults();const {f,t}=ownerRange('owner');const [vr,or]=await Promise.all([db.from('vehicles').select('id,name,plate,active').order('id'),db.from('orders').select('vehicle_id,kilometers,price,status,completed_at').eq('status','completed').gte('completed_at',f).lte('completed_at',t)]);if(vr.error||or.error){box.innerHTML='<div class="notice error">'+(vr.error?.message||or.error?.message)+'</div>';return;}box.innerHTML='<div style="overflow:auto"><table><thead><tr><th>Evakuators</th><th>Pasūtījumi</th><th>Kilometri</th><th>Apgrozījums</th></tr></thead><tbody>'+(vr.data||[]).map(vv=>{const a=(or.data||[]).filter(o=>Number(o.vehicle_id)===Number(vv.id));return `<tr><td><b>${vv.name} — ${vv.plate}</b></td><td>${a.length}</td><td>${a.reduce((s,o)=>s+Number(o.kilometers||0),0).toFixed(0)} km</td><td>€${a.reduce((s,o)=>s+Number(o.price||0),0).toFixed(2)}</td></tr>`}).join('')+'</tbody></table></div>';
@@ -921,7 +935,7 @@ async function loadTariffs(){
   (r.data||[]).map(x=>`<tr><td>${(c.data||[]).find(y=>Number(y.id)===Number(x.client_id))?.name||x.client_id}</td><td>${x.valid_from}</td><td>€${Number(x.day_base??x.city_base??0).toFixed(2)}</td><td>€${Number(x.night_base??x.city_base??0).toFixed(2)}</td><td>€${Number(x.day_km_rate??x.km_rate??0).toFixed(2)} / €${Number(x.night_km_rate??x.km_rate??0).toFixed(2)}</td><td>€${Number(x.van_day_base??x.day_base??0).toFixed(2)}</td><td>€${Number(x.van_night_base??x.night_base??0).toFixed(2)}</td><td>€${Number(x.van_day_km_rate??x.day_km_rate??0).toFixed(2)} / €${Number(x.van_night_km_rate??x.night_km_rate??0).toFixed(2)}</td><td>€${Number(x.tow_in_rate||0).toFixed(2)}</td><td>${x.tow_in_mode==='fixed_order'?'Fiksēti':'Par gab.'}</td><td>€${Number(x.jurmala_fee||0).toFixed(2)}</td><td>€${Number(x.minimum_price||0).toFixed(2)}</td><td>${Number(x.vat_rate||0)}%</td></tr>`).join('')+'</tbody></table></div>';
 }
 
-let raV8Report=null, raV8Invoices=[], raV8Generation=0, raV8Saving=false;
+let raV8Report=null, raV8Invoices=[], raV8Generation=0, raV8Saving=false, raV8TariffIssues=[];
 function raV8Escape(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function raV8Money(x){return x==null?'—':'€'+Number(x).toFixed(2);}
 function raV8Today(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Riga'}).format(new Date());}
@@ -943,7 +957,7 @@ async function loadOwnerInvoices(){
  }catch(e){document.getElementById('raV8Message').textContent=e.message||String(e);}
 }
 async function raV8Load(){
- const generation=++raV8Generation;raV8Report=null;
+ const generation=++raV8Generation;raV8Report=null;raV8TariffIssues=[];
  const cid=document.getElementById('raV8Client').value, month=document.getElementById('raV8Month').value;
  const msg=document.getElementById('raV8Message'), register=document.getElementById('raV8Register');
  document.getElementById('raV8Prepare').disabled=true;document.getElementById('raV8Snapshot').innerHTML='';
@@ -953,9 +967,13 @@ async function raV8Load(){
  try{
   const [r,i]=await Promise.all([db.rpc('ra_v8_register',{p_client:Number(cid),p_month:month+'-01'}),db.from('client_invoices').select('*').eq('client_id',cid).order('created_at',{ascending:false})]);
   if(generation!==raV8Generation)return;if(r.error||i.error)throw r.error||i.error;
-  raV8Report=r.data;raV8Invoices=i.data||[];register.innerHTML=raV8Table(r.data);
-  msg.textContent=r.data.blocked?'Sagatavošana bloķēta: pārbaudi rindu piezīmes un esošos rēķinus.':'';
-  document.getElementById('raV8Prepare').disabled=raV8Saving||r.data.blocked||!r.data.lines.length;
+  const tariffIssues=await raV8VerifyTariffs(r.data,cid);if(generation!==raV8Generation)return;
+  raV8TariffIssues=tariffIssues;
+  raV8Report=r.data;raV8Invoices=i.data||[];
+  const displayReport=tariffIssues.length?{...r.data,net:null,vat:null,total:null,lines:r.data.lines.map(line=>{const issue=tariffIssues.find(x=>String(x.id)===String(line.id));return issue?{...line,net:null,issue:[line.issue,issue.message].filter(Boolean).join(' ')}:line;})}:r.data;
+  register.innerHTML=raV8Table(displayReport);
+  msg.textContent=(r.data.blocked||raV8TariffIssues.length)?'Sagatavošana bloķēta: pārbaudi rindu piezīmes un esošos rēķinus.':'';
+  document.getElementById('raV8Prepare').disabled=raV8Saving||r.data.blocked||raV8TariffIssues.length>0||!r.data.lines.length;
   document.getElementById('raV8Saved').innerHTML='<div style="overflow:auto"><table><thead><tr><th>Rēķins</th><th>Periods</th><th>Kopā ar PVN</th><th>Apmaksāt līdz</th><th>Statuss</th><th>Darbības</th></tr></thead><tbody>'+raV8Invoices.map((x,index)=>{
    const status=x.status==='sent'&&x.due_date&&x.due_date<raV8Today()?'overdue':x.status;
    const label={draft:'Sagatavots',sent:'Nosūtīts',paid:'Apmaksāts',overdue:'Kavēts',cancelled:'Anulēts'}[status]||status;
@@ -965,15 +983,17 @@ async function raV8Load(){
 }
 function raV8View(index){const x=raV8Invoices[index];if(x?.v8_snapshot)document.getElementById('raV8Snapshot').innerHTML='<h3>Rēķins '+raV8Escape(x.invoice_number)+' — saglabāts reģistrs</h3>'+raV8Table(x.v8_snapshot);}
 async function raV8Prepare(){
- if(raV8Saving||!raV8Report||raV8Report.blocked)return;
+ if(raV8Saving||!raV8Report||raV8Report.blocked||raV8TariffIssues.length)return;
  const number=document.getElementById('raV8Number').value.trim(),due=document.getElementById('raV8Due').value;
  const msg=document.getElementById('raV8Message');if(!number||!due){msg.textContent='Norādi rēķina numuru un apmaksas datumu.';return;}
  raV8Saving=true;document.getElementById('raV8Prepare').disabled=true;
  try{
+  raV8TariffIssues=await raV8VerifyTariffs(raV8Report,Number(document.getElementById('raV8Client').value));
+  if(raV8TariffIssues.length)throw new Error('Tarifi ir mainījušies. Atjauno reģistru un pārbaudi rindu piezīmes.');
   const r=await db.rpc('ra_v8_prepare',{p_client:Number(document.getElementById('raV8Client').value),p_month:raV8Report.month,p_number:number,p_due:due,p_expected:raV8Report});if(r.error)throw r.error;
   await raV8Load();msg.textContent='Rēķins sagatavots un pasūtījumi piesaistīti.';
   const index=raV8Invoices.findIndex(x=>String(x.id)===String(r.data));if(index>=0)raV8View(index);
- }catch(e){msg.textContent=e.message||String(e);}finally{raV8Saving=false;document.getElementById('raV8Prepare').disabled=!raV8Report||raV8Report.blocked||!raV8Report.lines.length;}
+ }catch(e){msg.textContent=e.message||String(e);}finally{raV8Saving=false;document.getElementById('raV8Prepare').disabled=!raV8Report||raV8Report.blocked||raV8TariffIssues.length>0||!raV8Report.lines.length;}
 }
 async function raV8Status(index,status,button){
  const x=raV8Invoices[index];if(!x)return;button.disabled=true;
@@ -1055,7 +1075,7 @@ async function ownerStaffHistory(){
 /* ОПЛАТА ВОДИТЕЛЯ */
 function lvDateToIso(value){
   const x=String(value||'').trim();
-  if(/^\d{4}-\d{2}-\d{2}$/.test(x)) return x;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(x)){const d=new Date(x+'T12:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===x?x:'';}
   const m=x.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   if(!m) return '';
   return `${m[3]}-${m[2]}-${m[1]}`;
@@ -1066,7 +1086,7 @@ let did=Number(v('payDriver'));
 let from=lvDateToIso(v('payFrom'));
 let to=lvDateToIso(v('payTo'));
 if(!did){document.getElementById('payResult').innerHTML='<div class="notice error">Izvēlies vadītāju.</div>';return;}
-if(!from||!to){document.getElementById('payResult').innerHTML='<div class="notice error">Ievadi datumus formātā DD.MM.GGGG.</div>';return;}
+if(!from||!to||from>to){document.getElementById('payResult').innerHTML='<div class="notice error">Izvēlies derīgu periodu: No nedrīkst būt pēc Līdz.</div>';return;}
 
 let [r,sr]=await Promise.all([
 db.from('orders')
@@ -1802,8 +1822,8 @@ async function updateOrderTariffHint(){
   if(!cid){box.style.display='none';box.innerHTML='';return;}
   const cr=await db.from('clients').select('payment_type').eq('id',cid).maybeSingle();
   if(cr.error||!cr.data||cr.data.payment_type==='cash'||cr.data.payment_type==='partner'){box.style.display='none';box.innerHTML='';return;}
-  const today=new Date().toLocaleDateString('sv-SE');
-  const tr=await db.from('client_tariffs').select('*').eq('client_id',cid).lte('valid_from',today).order('valid_from',{ascending:false}).limit(1).maybeSingle();
+  let tr;
+  try{tr={data:raSelectTariff(await raClientTariffs(cid),cid,raV8Today())};}catch(e){tr={error:e};}
   if(tr.error||!tr.data){box.style.display='';box.innerHTML='Līgumklientam aktīvs tarifs nav atrasts.';return;}
   const t=tr.data, van=v('transportType')==='van';
   const dayBase=Number(van?(t.van_day_base??t.day_base??0):(t.day_base??0));
@@ -1868,7 +1888,7 @@ client_id:clientId,
 
 client_type:clientName,
 
-phone:v('phone'),
+phone:raPhoneValue(v('phone')),
 
 car:v('car'),
 
@@ -1927,6 +1947,7 @@ return;
 }
 
 
+raHistoryPromise=null;
 /* УСПЕШНО */
 msg(
 'Pasūtījums Nr. '+
@@ -2478,7 +2499,7 @@ async function finish(id){
     return;
   }
 
-  const current=await db.from('orders').select('price,our_share,client_id,driver_id,vehicle_id,transport_type,jurmala_entry,night_service').eq('id',id).maybeSingle();
+  const current=await db.from('orders').select('*').eq('id',id).maybeSingle();
   if(current.error||!current.data){
     alert(current.error?.message||'Pasūtījums nav atrasts.');
     return;
@@ -2496,19 +2517,10 @@ async function finish(id){
 
   let contractPrice=Number(current.data.price||0);
   if(isContract){
-    const today=new Date().toISOString().slice(0,10);
-    const tr=await db.from('client_tariffs').select('*').eq('client_id',current.data.client_id).lte('valid_from',today).order('valid_from',{ascending:false}).limit(1).maybeSingle();
-    if(tr.error||!tr.data){ alert('Šim līguma klientam nav aktīva tarifa.'); return; }
-    const t=tr.data;
-    const h=new Date().getHours();
-    const night=!!current.data.night_service || h>=22 || h<7;
-    const van=current.data.transport_type==='van';
-    const base=Number(van?(night?(t.van_night_base??t.night_base):(t.van_day_base??t.day_base)):(night?t.night_base:t.day_base)||0);
-    const rate=Number(van?(night?(t.van_night_km_rate??t.night_km_rate):(t.van_day_km_rate??t.day_km_rate)):(night?t.night_km_rate:t.day_km_rate)||0);
-    const towRate=Number(t.tow_in_rate||0);
-    const towCost=t.tow_in_mode==='fixed_order'?(rt>0?towRate:0):rt*towRate;
-    const jurmala=current.data.jurmala_entry?Number(t.jurmala_fee||0):0;
-    contractPrice=Math.max(Number(t.minimum_price||0),base+km*rate+towCost+jurmala);
+    try{
+      const tariffs=await raClientTariffs(current.data.client_id);
+      contractPrice=raContractPrice({...current.data,kilometers:km,tow_ins:rt},tariffs).net;
+    }catch(e){alert(e.message||String(e));return;}
   }
   const ourShare=isPartner ? Number(current.data.our_share||0) : (isContract?contractPrice:actual);
   const adakDebt=isPartner ? Math.max(0,actual-ourShare) : 0;
@@ -2535,6 +2547,7 @@ async function finish(id){
     extra_work_amount:extraPay,
     driver_pay:pay,
     price:isContract?contractPrice:Number(current.data.price||0),
+    ...(isContract?{contractual_amount:contractPrice}:{}),
     cash_received:isContract?0:actual,
     our_share:ourShare,
     customer_payment_comment:comment||null,
@@ -2580,6 +2593,7 @@ async function finish(id){
 
 /* Paroles atjaunošanas režīms pēc Supabase e-pasta saites */
 db.auth.onAuthStateChange((event, session)=>{
+if(event==='SIGNED_OUT'||event==='SIGNED_IN'){raHistoryPromise=null;document.querySelectorAll('.ra-history').forEach(x=>{x.replaceChildren();x.hidden=true;});}
 if(event==='PASSWORD_RECOVERY' && session){
 document.getElementById('login').classList.remove('hide');
 document.getElementById('app').classList.add('hide');
@@ -2587,6 +2601,134 @@ document.getElementById('passwordResetBox').classList.remove('hide');
 document.getElementById('passwordResetBox').scrollIntoView({behavior:'smooth',block:'center'});
 }
 });
+
+/* Historical contract pricing. Dates are interpreted in Latvia, including UTC timestamps. */
+function raOrderDate(order){
+  const value=order.service_date||order.order_date||order.created_at;
+  if(!value)throw new Error('Pasūtījumam nav pakalpojuma datuma.');
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(value)))return value;
+  const date=new Date(value);
+  if(!Number.isFinite(date.getTime()))throw new Error('Nederīgs pakalpojuma datums.');
+  return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Riga'}).format(date);
+}
+async function raClientTariffs(clientId){
+  const r=await db.from('client_tariffs').select('*').eq('client_id',clientId).order('valid_from',{ascending:false});
+  if(r.error)throw r.error;
+  return r.data||[];
+}
+function raSelectTariff(tariffs,clientId,date){
+  const matches=tariffs.filter(t=>String(t.client_id)===String(clientId)&&t.valid_from&&String(t.valid_from).slice(0,10)<=date&&(!t.valid_to||String(t.valid_to).slice(0,10)>=date));
+  matches.sort((a,b)=>String(b.valid_from).localeCompare(String(a.valid_from))||Number(b.id||0)-Number(a.id||0));
+  if(!matches.length)throw new Error('Datumā '+date+' klientam nav spēkā esoša tarifa.');
+  return matches[0];
+}
+function raTariffNumber(...values){
+  const value=values.find(x=>x!==null&&x!==undefined&&x!=='');
+  if(value===undefined)throw new Error('Tarifā trūkst cenas.');
+  const number=Number(value);
+  if(!Number.isFinite(number)||number<0)throw new Error('Tarifā ir nederīga cena.');
+  return number;
+}
+function raContractPrice(order,tariffs){
+  const t=raSelectTariff(tariffs,order.client_id,raOrderDate(order));
+  const source=order.service_date||order.order_date||order.created_at;
+  const hour=/^\d{4}-\d{2}-\d{2}$/.test(String(source))?12:Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Riga',hour:'2-digit',hourCycle:'h23'}).format(new Date(source)));
+  const night=!!order.night_service||hour>=22||hour<7;
+  const prefix=night?'night':'day',van=order.transport_type==='van';
+  const base=raTariffNumber(van?t['van_'+prefix+'_base']:null,t[prefix+'_base'],t.city_base);
+  const rate=raTariffNumber(van?t['van_'+prefix+'_km_rate']:null,t[prefix+'_km_rate'],t.km_rate);
+  const km=raTariffNumber(order.kilometers,0),tow=raTariffNumber(order.tow_ins,0);
+  const towRate=raTariffNumber(t.tow_in_rate,0);
+  if(tow>0&&t.tow_in_mode&&!['fixed_order','per_item'].includes(t.tow_in_mode))throw new Error('Nederīgs ratiņu tarifa režīms.');
+  const amount=Math.max(raTariffNumber(t.minimum_price,0),base+km*rate+(t.tow_in_mode==='fixed_order'?(tow>0?towRate:0):tow*towRate)+(order.jurmala_entry?raTariffNumber(t.jurmala_fee,0):0));
+  const net=Math.round((amount+Number.EPSILON)*100)/100;
+  if(net<=0)throw new Error('Aprēķinātā līgumcena ir 0. Pārbaudi bāzi un minimālo cenu.');
+  return {net,vat_rate:raTariffNumber(t.vat_rate,21),tariff:t};
+}
+
+/* Custom, keyboard-accessible history suggestions. Read only under the current user's RLS. */
+function raPhoneKey(value){
+  const digits=String(value||'').replace(/\D/g,'');
+  return digits.startsWith('00371')?digits.slice(5):digits.startsWith('371')?digits.slice(3):digits;
+}
+function raPhoneValue(value){
+  const key=raPhoneKey(value);
+  return key.length===8?'+371'+key:String(value||'').trim();
+}
+let raHistoryPromise=null;
+function raOrderHistory(){
+  if(!raHistoryPromise)raHistoryPromise=(async()=>{
+    const rows=[];
+    for(let offset=0;;offset+=500){
+      const r=await db.from('orders').select('id,phone,car').order('id',{ascending:false}).range(offset,offset+499);
+      if(r.error)throw r.error;
+      rows.push(...(r.data||[]));
+      if((r.data||[]).length<500)return rows;
+    }
+  })().catch(e=>{raHistoryPromise=null;throw e;});
+  return raHistoryPromise;
+}
+function raInitHistory(){
+  for(const field of ['phone','car']){
+    const input=document.getElementById(field);if(!input)continue;
+    const list=document.createElement('div');list.id=field+'History';list.className='ra-history';list.setAttribute('role','listbox');list.hidden=true;
+    input.parentElement.appendChild(list);
+    input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-controls',list.id);input.setAttribute('aria-expanded','false');
+    let generation=0,index=-1;
+    function close(){generation++;list.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');}
+    async function render(){
+      const token=++generation,query=field==='phone'?raPhoneKey(input.value):input.value.trim().toLocaleLowerCase('lv');
+      list.replaceChildren();index=-1;list.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');
+      if(!query)return;
+      try{
+        const rows=await raOrderHistory();if(token!==generation||document.activeElement!==input)return;
+        const seen=new Set();
+        for(const row of rows){
+          const value=field==='phone'?raPhoneValue(row.phone):String(row.car||'').trim();
+          const key=field==='phone'?raPhoneKey(value):value.toLocaleLowerCase('lv');
+          if(!key.includes(query)||seen.has(key))continue;seen.add(key);
+          const option=document.createElement('button');option.type='button';option.id=list.id+'_'+list.children.length;option.setAttribute('role','option');option.setAttribute('aria-selected','false');option.tabIndex=-1;option.textContent=value;
+          option.addEventListener('mousedown',e=>e.preventDefault());option.addEventListener('click',()=>{input.value=value;close();input.focus();});list.appendChild(option);
+          if(list.children.length===12)break;
+        }
+        list.hidden=!list.children.length;input.setAttribute('aria-expanded',String(!list.hidden));
+      }catch(e){if(token===generation){list.hidden=false;list.textContent='Vēsturi neizdevās ielādēt. Ievadi manuāli.';}}
+    }
+    input.addEventListener('input',render);input.addEventListener('focus',render);input.addEventListener('blur',close);
+    input.addEventListener('keydown',e=>{
+      const options=[...list.querySelectorAll('button')];
+      if(e.key==='Escape'){close();return;}
+      if(list.hidden||!options.length)return;
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+        e.preventDefault();index=(index+(e.key==='ArrowDown'?1:-1)+options.length)%options.length;
+        options.forEach((o,i)=>o.setAttribute('aria-selected',String(i===index)));input.setAttribute('aria-activedescendant',options[index].id);options[index].scrollIntoView({block:'nearest'});
+      }else if(e.key==='Enter'&&index>=0){e.preventDefault();options[index].click();}
+    });
+  }
+}
+
+/* Keep the V8 server snapshot and atomic prepare contract unchanged; fail closed on disagreement. */
+async function raV8VerifyTariffs(report,clientId){
+  const tariffs=await raClientTariffs(clientId),orders=[];
+  const ids=report.lines.map(x=>x.id);
+  for(let start=0;start<ids.length;start+=100){
+    const r=await db.from('orders').select('*').eq('client_id',clientId).in('id',ids.slice(start,start+100));
+    if(r.error)throw r.error;orders.push(...(r.data||[]));
+  }
+  const issues=[];
+  for(const line of report.lines){
+    try{
+      const order=orders.find(x=>String(x.id)===String(line.id));
+      if(!order)throw new Error('Pasūtījums nav pieejams.');
+      const calculated=raContractPrice(order,tariffs);
+      if(line.net==null||!Number.isFinite(Number(line.net))||Math.abs(Number(line.net)-calculated.net)>0.005||line.vat_rate==null||!Number.isFinite(Number(line.vat_rate))||Math.abs(Number(line.vat_rate)-calculated.vat_rate)>0.005)
+        throw new Error('V8 summa neatbilst vēsturiskajam tarifam: jābūt '+raV8Money(calculated.net)+' bez PVN, PVN '+calculated.vat_rate+'%. Nepieciešama servera aprēķina pārbaude.');
+    }catch(e){issues.push({id:line.id,message:e.message||String(e)});}
+  }
+  return issues;
+}
+
+raInitHistory();
 
 /* ВАЖНО: ПРОВЕРКА СОХРАНЁННОЙ СЕССИИ */
 if(!window.location.hash.includes('type=recovery')) checkSession();
