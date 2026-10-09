@@ -2515,14 +2515,18 @@ async function finish(id){
   const isPartner=paymentType==='partner';
   const isContract=paymentType!=='cash' && !isPartner;
 
-  let contractPrice=Number(current.data.price||0);
+  // Klienta līgumtarifs nedrīkst bloķēt vadītāja darbu vai ietekmēt viņa algu.
+  // Ja tarifu nevar aprēķināt, saglabājam esošās cenu vērtības nemainītas.
+  let contractPrice=null;
   if(isContract){
     try{
       const tariffs=await raClientTariffs(current.data.client_id);
       contractPrice=raContractPrice({...current.data,kilometers:km,tow_ins:rt},tariffs).net;
-    }catch(e){alert(e.message||String(e));return;}
+    }catch(e){
+      console.warn('Līgumcena nav aprēķināta pasūtījumam '+id+':',e);
+    }
   }
-  const ourShare=isPartner ? Number(current.data.our_share||0) : (isContract?contractPrice:actual);
+  const ourShare=isPartner ? Number(current.data.our_share||0) : (isContract?(contractPrice??Number(current.data.our_share||0)):actual);
   const adakDebt=isPartner ? Math.max(0,actual-ourShare) : 0;
 
   const now=new Date();
@@ -2546,8 +2550,7 @@ async function finish(id){
     extra_work:extraWork||null,
     extra_work_amount:extraPay,
     driver_pay:pay,
-    price:isContract?contractPrice:Number(current.data.price||0),
-    ...(isContract?{contractual_amount:contractPrice}:{}),
+    ...(!isContract?{price:Number(current.data.price||0)}:contractPrice!==null?{price:contractPrice,contractual_amount:contractPrice}:{}),
     cash_received:isContract?0:actual,
     our_share:ourShare,
     customer_payment_comment:comment||null,
