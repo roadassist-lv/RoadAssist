@@ -2637,6 +2637,7 @@ function raTariffNumber(...values){
   if(!Number.isFinite(number)||number<0)throw new Error('Tarifā ir nederīga cena.');
   return number;
 }
+
 function raContractPrice(order,tariffs){
   const t=raSelectTariff(tariffs,order.client_id,raOrderDate(order));
   const source=order.service_date||order.order_date||order.created_at;
@@ -2647,11 +2648,58 @@ function raContractPrice(order,tariffs){
   const rate=raTariffNumber(van?t['van_'+prefix+'_km_rate']:null,t[prefix+'_km_rate'],t.km_rate);
   const km=raTariffNumber(order.kilometers,0),tow=raTariffNumber(order.tow_ins,0);
   const towRate=raTariffNumber(t.tow_in_rate,0);
-  if(tow>0&&t.tow_in_mode&&!['fixed_order','per_item'].includes(t.tow_in_mode))throw new Error('Nederīgs ratiņu tarifa režīms.');
-  const amount=Math.max(raTariffNumber(t.minimum_price,0),base+km*rate+(t.tow_in_mode==='fixed_order'?(tow>0?towRate:0):tow*towRate)+(order.jurmala_entry?raTariffNumber(t.jurmala_fee,0):0));
-  const net=Math.round((amount+Number.EPSILON)*100)/100;
-  if(net<=0)throw new Error('Aprēķinātā līgumcena ir 0. Pārbaudi bāzi un minimālo cenu.');
-  return {net,vat_rate:raTariffNumber(t.vat_rate,21),tariff:t};
+
+  if(tow>0&&t.tow_in_mode&&!['fixed_order','per_item'].includes(t.tow_in_mode)){
+    throw new Error('Nederīgs ratiņu tarifa režīms.');
+  }
+
+  let extras=order.extra_charges;
+  if(extras==null)extras=[];
+  if(typeof extras==='string'){
+    try{extras=JSON.parse(extras);}
+    catch(e){throw new Error('Nederīgas papildmaksas.');}
+  }
+  if(!Array.isArray(extras)){
+    throw new Error('Nederīgs papildmaksu formāts.');
+  }
+
+  let extraCents=0;
+  let hasExtraJurmala=false;
+
+  for(const item of extras){
+    const cents=Number(item.cents);
+    if(!['jurmala','parking','permit','other'].includes(item.code)||
+       !Number.isSafeInteger(cents)||cents<=0){
+      throw new Error('Nederīga papildmaksa.');
+    }
+    extraCents+=cents;
+    if(item.code==='jurmala')hasExtraJurmala=true;
+  }
+
+  const jurmalaFee=order.jurmala_entry&&!hasExtraJurmala
+    ?raTariffNumber(t.jurmala_fee,0)
+    :0;
+
+  const serviceAmount=Math.max(
+    raTariffNumber(t.minimum_price,0),
+    base+km*rate+
+    (t.tow_in_mode==='fixed_order'?(tow>0?towRate:0):tow*towRate)+
+    jurmalaFee
+  );
+
+  const net=Math.round(
+    (serviceAmount+extraCents/100+Number.EPSILON)*100
+  )/100;
+
+  if(net<=0){
+    throw new Error('Aprēķinātā līgumcena ir 0. Pārbaudi bāzi un minimālo cenu.');
+  }
+
+  return {
+    net,
+    vat_rate:raTariffNumber(t.vat_rate,21),
+    tariff:t
+  };
 }
 
 /* Custom, keyboard-accessible history suggestions. Read only under the current user's RLS. */
