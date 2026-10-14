@@ -2967,7 +2967,7 @@ async function raExportClientExcel() {
     book.created = new Date();
     book.calcProperties.fullCalcOnLoad = true;
     const sheet = book.addWorksheet('Pasūtījumi', {
-      views: [{state:'frozen',ySplit:11,xSplit:4,activeCell:'E12'}],
+      views: [{state:'normal'}],
       properties: {pageSetUpPr:{fitToPage:true}}
     });
     sheet.columns = [
