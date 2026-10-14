@@ -448,6 +448,35 @@ let currentProfile=null;
 let dispatcherDrivers=[];
 let dispatcherVehicles=[];
 let vehicleRefreshTimer=null;
+let raOrdersRefreshBusy=false;
+
+/* Atjaunojam atvērtu vadītāja/mašīnas kabinetu bez manuālas pārlādes. */
+async function raRefreshMobileOrders(){
+  if(raOrdersRefreshBusy || document.hidden || !navigator.onLine) return;
+  if(sessionMode!=='driver' && sessionMode!=='vehicle') return;
+  const active=document.activeElement;
+  // Nesabojājam vadītāja ievadītos kilometrus, maksājumus un piezīmes.
+  if(active && active.closest && active.closest('#driverView') &&
+     /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
+  raOrdersRefreshBusy=true;
+  try{
+    if(sessionMode==='vehicle') await loadVehicleOrders();
+    else await loadDriverOrders();
+  }catch(e){
+    console.warn('Automātiska pasūtījumu atjaunošana:',e);
+  }finally{
+    raOrdersRefreshBusy=false;
+  }
+}
+function raStartMobileRefresh(){
+  if(vehicleRefreshTimer) clearInterval(vehicleRefreshTimer);
+  vehicleRefreshTimer=setInterval(raRefreshMobileOrders,20000);
+}
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden) raRefreshMobileOrders();
+});
+window.addEventListener('online',raRefreshMobileOrders);
+window.addEventListener('pageshow',raRefreshMobileOrders);
 
 
 function statusLv(s){
@@ -1550,6 +1579,7 @@ document.getElementById('orders').classList.remove('active');
 document.getElementById('driverView').classList.add('active');
 
 await loadDriverOrders();
+raStartMobileRefresh();
 
 }
 
@@ -1557,14 +1587,7 @@ await loadDriverOrders();
 /* КАБИНЕТ МАШИНЫ */
 async function initVehicle(){
 const vr=await db.from('vehicles').select('id,name,plate,current_driver_id,work_status').eq('id',vehicleId).single();if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';document.getElementById('roleLabel').textContent='🚛 '+vehicleName+' — '+vehiclePlate;if('serviceWorker' in navigator){try{await navigator.serviceWorker.register('./sw.js');}catch(e){console.warn('Service Worker:',e);}}document.getElementById('dispatcherTabs').style.display='none';document.getElementById('new').classList.remove('active');document.getElementById('orders').classList.remove('active');document.getElementById('driverView').classList.add('active');await loadVehicleOrders();
-  if(vehicleRefreshTimer) clearInterval(vehicleRefreshTimer);
-  vehicleRefreshTimer=setInterval(()=>{ 
-    if(sessionMode==='vehicle'){ 
-      loadVehicleOrders(); 
-      loadVehicleCash();
-      loadVehicleAdakDebt(); 
-    } 
-  },600000);
+  raStartMobileRefresh();
 }
 
 
