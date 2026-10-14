@@ -3135,9 +3135,12 @@ async function raExportClientExcel() {
       const permit = extraSum('permit');
       const other = extraSum('other');
 
-      const jurmala = extras.some(x => x.code === 'jurmala')
-        ? 'Jā (5,28 €)'
-        : o.jurmala_entry ? 'Jā' : '';
+     const jurmalaExtra = extras
+  .filter(x => x.code === 'jurmala')
+  .reduce((sum, x) => sum + Number(x.cents || 0), 0) / 100;
+
+const jurmala = jurmalaExtra ||
+  (o.jurmala_entry ? 5.28 : 0);
 
       const vehicle = vehicles.get(String(o.vehicle_id));
       const vehicleName = vehicle
@@ -3176,7 +3179,9 @@ async function raExportClientExcel() {
         notes,
         vehicleName,
         o.status || ''
-      ]);
+           ]);
+
+      row.getCell(9).numFmt = '#,##0.00';
 
       row.alignment = {
         vertical: 'top',
