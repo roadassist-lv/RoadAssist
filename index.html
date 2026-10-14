@@ -2897,5 +2897,393 @@ if(!window.location.hash.includes('type=recovery')) checkSession();
 
 </script>
 
+  
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+
+<script>
+async function raExportClientExcel() {
+  const message = document.getElementById('raExcelMessage');
+  const button = document.querySelector(
+    'button[onclick="raExportClientExcel()"]'
+  );
+
+  const say = text => {
+    if (message) message.textContent = text;
+  };
+
+  try {
+    if (!window.ExcelJS) {
+      throw new Error('ExcelJS nav ielādēts. Atjauno lapu.');
+    }
+
+    const cid = Number(
+      document.getElementById('ownerClient')?.value || 0
+    );
+    const from = document.getElementById('ownerClientFrom')?.value;
+    const to = document.getElementById('ownerClientTo')?.value;
+
+    if (!cid || !from || !to) {
+      throw new Error('Izvēlies klientu un periodu.');
+    }
+    if (from > to) {
+      throw new Error('Nepareizs datumu periods.');
+    }
+
+    if (button) button.disabled = true;
+    say('Sagatavo Excel atskaiti...');
+
+    const clientResult = await db
+      .from('clients')
+      .select('id,name,payment_type')
+      .eq('id', cid)
+      .single();
+
+    if (clientResult.error) throw clientResult.error;
+
+    const client = clientResult.data;
+    const contract = client.payment_type &&
+      !['cash', 'partner'].includes(client.payment_type);
+
+    const tariffs = contract
+      ? await raClientTariffs(cid)
+      : [];
+
+    // Ielādē visus ierakstus pa daļām, ne tikai pirmos 1000.
+    const orders = [];
+    const pageSize = 500;
+
+    for (let start = 0; ; start += pageSize) {
+      const result = await db
+        .from('orders')
+        .select('*')
+        .eq('client_id', cid)
+        .eq('status', 'completed')
+        .gte('created_at', raExcelRigaMidnight(from))
+.lt('created_at', raExcelRigaMidnight(raExcelNextDay(to)))
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(start, start + pageSize - 1);
+
+      if (result.error) throw result.error;
+
+      const part = result.data || [];
+      orders.push(...part);
+
+      if (part.length < pageSize) break;
+    }
+
+    if (!orders.length) {
+      say('Šajā periodā nav pasūtījumu.');
+      return;
+    }
+
+    const vehiclesResult = await db
+      .from('vehicles')
+      .select('id,name,plate');
+
+    if (vehiclesResult.error) throw vehiclesResult.error;
+
+    const vehicles = new Map(
+      (vehiclesResult.data || []).map(v => [String(v.id), v])
+    );
+
+    const book = new ExcelJS.Workbook();
+    book.creator = 'Road Assist';
+    book.created = new Date();
+
+    const sheet = book.addWorksheet('Pasūtījumi', {
+      views: [{ state: 'frozen', ySplit: 10 }]
+    });
+
+    sheet.columns = [
+      { width: 8 },  { width: 15 }, { width: 15 },
+      { width: 22 }, { width: 32 }, { width: 32 },
+      { width: 12 }, { width: 12 }, { width: 14 },
+      { width: 14 }, { width: 14 }, { width: 16 },
+      { width: 18 }, { width: 18 }, { width: 42 },
+      { width: 24 }, { width: 17 }
+    ];
+
+    // Kompakta uzņēmuma galvene.
+    sheet.mergeCells('A1:D2');
+    sheet.getCell('A1').value = 'ROAD ASSIST';
+    sheet.getCell('A1').font = {
+      name: 'Arial', size: 19, bold: true,
+      color: { argb: 'FF222222' }
+    };
+    sheet.getCell('A1').alignment = {
+      vertical: 'middle'
+    };
+
+    sheet.mergeCells('E1:Q1');
+    sheet.getCell('E1').value =
+      'SIA DE Logistic | Reģ. Nr. 40203347920';
+
+    sheet.mergeCells('E2:Q2');
+    sheet.getCell('E2').value =
+      'Zundānu iela 3 - 91, Rīga, LV-1073';
+
+    sheet.mergeCells('A3:Q3');
+    sheet.getCell('A3').value =
+      'AS Citadele Banka | SWIFT PARXLV22 | ' +
+      'LV87PARX0027224750001 | Tālr. +371 29889585';
+
+    sheet.mergeCells('A5:Q5');
+    sheet.getCell('A5').value =
+      'KLIENTA PASŪTĪJUMU ATSKAITE';
+    sheet.getCell('A5').font = {
+      bold: true, size: 15
+    };
+
+    sheet.mergeCells('A6:Q6');
+    sheet.getCell('A6').value =
+      'Klients: ' + client.name;
+
+    sheet.mergeCells('A7:Q7');
+    sheet.getCell('A7').value =
+      'Periods: ' + from + ' — ' + to;
+
+    sheet.mergeCells('A8:Q8');
+    sheet.getCell('A8').value =
+      'Atskaite salīdzināšanai ar klientu. ' +
+      'Summas var precizēt Excel failā.';
+
+    const headers = [
+      'Nr.', 'Datums', 'Valsts Nr.',
+      'Marka / modelis', 'No', 'Uz',
+      'Km', 'Ratiņi', 'Jūrmala',
+      'Stāvvieta €', 'Caurlaide €',
+      'Citi izdevumi €', 'Līgumcena bez PVN €',
+      'Skaidrā nauda €', 'Piezīmes / papilddarbi',
+      'Evakuators', 'Statuss'
+    ];
+
+    const headerRow = sheet.getRow(10);
+    headerRow.values = headers;
+    headerRow.height = 34;
+
+    headerRow.eachCell(cell => {
+      cell.font = {
+        bold: true,
+        color: { argb: 'FFFFFFFF' }
+      };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF263238' }
+      };
+      cell.alignment = {
+        vertical: 'middle',
+        wrapText: true
+      };
+    });
+
+    let totalCents = 0;
+    let totalCashCents = 0;
+    let totalKm = 0;
+    let errors = 0;
+
+    const moneyCents = value => {
+      const n = Number(value);
+      return Number.isFinite(n)
+        ? Math.round(n * 100)
+        : 0;
+    };
+
+    const parseExtras = value => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value;
+      if (typeof value === 'string') {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+      }
+      throw new Error('Nederīgs papildmaksu formāts.');
+    };
+
+    for (const o of orders) {
+      let amount = null;
+      let issue = '';
+
+      try {
+        amount = contract
+          ? raContractPrice(o, tariffs).net
+          : Number(o.contractual_amount ?? o.price);
+
+        if (!Number.isFinite(amount)) {
+          throw new Error('Nav norādīta cena.');
+        }
+      } catch (e) {
+        issue = e.message || String(e);
+        errors++;
+      }
+
+      let extras = [];
+      try {
+        extras = parseExtras(o.extra_charges);
+      } catch (e) {
+        issue += (issue ? '; ' : '') + e.message;
+        errors++;
+      }
+
+      const extraSum = code =>
+        extras
+          .filter(x => x.code === code)
+          .reduce((sum, x) => sum + Number(x.cents || 0), 0)
+          / 100;
+
+      const parking = extraSum('parking');
+      const permit = extraSum('permit');
+      const other = extraSum('other');
+
+      const jurmala = extras.some(x => x.code === 'jurmala')
+        ? 'Jā (5,28 €)'
+        : o.jurmala_entry ? 'Jā' : '';
+
+      const vehicle = vehicles.get(String(o.vehicle_id));
+      const vehicleName = vehicle
+        ? [vehicle.name, vehicle.plate].filter(Boolean).join(' ')
+        : '';
+
+      const notes = [
+        o.problem,
+        o.extra_work,
+        o.ra_service_note,
+        o.customer_payment_comment,
+        ...extras
+  .filter(x => x.code !== 'jurmala')
+  .map(x => x.note ? x.code + ': ' + x.note : ''),
+        issue ? 'PĀRBAUDĪT: ' + issue : ''
+      ].filter(Boolean).join('; ');
+
+      const cash = Number(o.cash_received || 0);
+      const km = Number(o.kilometers || 0);
+
+      const row = sheet.addRow([
+        o.id,
+        new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }).format(new Date(o.created_at)),
+        o.plate || '',
+        o.car || '',
+        o.pickup || '',
+        o.destination || '',
+        km,
+        Number(o.tow_ins || 0),
+        jurmala,
+        parking,
+        permit,
+        other,
+        amount,
+        cash,
+        notes,
+        vehicleName,
+        o.status || ''
+      ]);
+
+      row.alignment = {
+        vertical: 'top',
+        wrapText: true
+      };
+
+      for (const col of [10, 11, 12, 13, 14]) {
+        row.getCell(col).numFmt = '#,##0.00';
+      }
+
+      if (issue) {
+        row.getCell(13).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFD6D6' }
+        };
+      }
+
+      if (amount !== null) {
+        totalCents += moneyCents(amount);
+      }
+      totalCashCents += moneyCents(cash);
+      totalKm += km;
+    }
+
+    const totalRow = sheet.addRow([
+      'KOPĀ', '', '', '', '', '',
+      totalKm, '', '', '', '', '',
+      errors ? null : totalCents / 100,
+      totalCashCents / 100
+    ]);
+
+    totalRow.font = { bold: true };
+    totalRow.getCell(13).numFmt = '#,##0.00';
+    totalRow.getCell(14).numFmt = '#,##0.00';
+
+    sheet.autoFilter = {
+      from: 'A10',
+      to: 'Q' + (10 + orders.length)
+    };
+
+    sheet.pageSetup.orientation = 'landscape';
+    sheet.pageSetup.fitToPage = true;
+    sheet.pageSetup.fitToWidth = 1;
+    sheet.pageSetup.fitToHeight = 0;
+
+    const buffer = await book.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download =
+      'RoadAssist_' +
+      String(client.name).replace(/[^a-zA-Z0-9_-]/g, '_') +
+      '_' + from + '_' + to + '.xlsx';
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    say(
+      'Excel sagatavots: ' + orders.length +
+      ' pasūtījumi.' +
+      (errors
+        ? ' Uzmanību: ir rindas ar aprēķina kļūdām!'
+        : '')
+    );
+
+  } catch (e) {
+    console.error('Excel export:', e);
+    say('Excel kļūda: ' + (e.message || String(e)));
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function raExcelNextDay(dateText) {
+  const d = new Date(dateText + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+  function raExcelRigaMidnight(dateText) {
+  const utcMidnight = new Date(dateText + 'T00:00:00Z');
+  const offsetHours = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Riga',
+    timeZoneName: 'longOffset'
+  }).formatToParts(utcMidnight)
+    .find(p => p.type === 'timeZoneName')
+    .value
+    .match(/GMT([+-])(\d{2}):(\d{2})/);
+
+  if (!offsetHours) throw new Error('Nevar noteikt Rīgas laika joslu.');
+
+  const minutes =
+    (Number(offsetHours[2]) * 60 + Number(offsetHours[3])) *
+    (offsetHours[1] === '+' ? 1 : -1);
+
+  return new Date(
+    utcMidnight.getTime() - minutes * 60000
+  ).toISOString();
+}
+</script>
+
 </body>
 </html>
