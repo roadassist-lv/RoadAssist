@@ -2255,6 +2255,18 @@ window.assignOrder=assignOrder;
 
 
 /* PUSH STATUS: atsevišķs bloks, lai iPhone pogu nevarētu pārrakstīt citas pārzīmēšanas */
+let raPushFeedback=null;
+let raPushSaving=false;
+function raShowPushFeedback(){
+  const box=document.getElementById('vehiclePushBox') || document.getElementById('driverHead');
+  if(!box || !raPushFeedback) return;
+  let notice=document.getElementById('raPushFeedback');
+  if(!notice){ notice=document.createElement('div'); notice.id='raPushFeedback'; box.appendChild(notice); }
+  notice.className='notice'+(raPushFeedback.error?' error':'');
+  notice.style.marginTop='10px';
+  notice.setAttribute('role','status');
+  notice.innerHTML=raPushFeedback.message;
+}
 async function renderVehiclePushStatus(){
   const box=document.getElementById('vehiclePushBox');
   if(!box) return;
@@ -2275,7 +2287,7 @@ async function renderVehiclePushStatus(){
     }
 
     if(permission==='granted' && subscribed){
-      box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice">Paziņojumi ir ieslēgti šajā telefonā.</div><button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()">🔄 ATJAUNOT PUSH SAVIENOJUMU</button>';
+      box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice">Šajā pārlūkā ir Push abonements. Lai saglabātu to sistēmā, nospied ATJAUNOT PUSH SAVIENOJUMU.</div><button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()">🔄 ATJAUNOT PUSH SAVIENOJUMU</button>';
     }else if(permission==='denied'){
       box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice error">Paziņojumi ir bloķēti. Ieslēdz tos iPhone iestatījumos un pēc tam atgriezies šeit.</div>';
     }else{
@@ -2285,14 +2297,15 @@ async function renderVehiclePushStatus(){
     console.warn('Push status render:',e);
     box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><button class="primary" style="width:100%" onclick="enablePushNotifications()">🔔 IESLĒGT OPOVĒSTĪJUMUS</button>';
   }
+  finally{ raShowPushFeedback(); }
 }
 
 /* PUSH: saglabājam šī telefona Push Subscription Supabase */
 async function enablePushNotifications(){
-  const out=document.getElementById('vehiclePushBox');
-
+  if(raPushSaving) return;
   const show=(msg, error=true)=>{
-    if(out) out.innerHTML += '<div class="notice'+(error?' error':'')+'" style="margin-top:10px">'+msg+'</div>';
+    raPushFeedback={message:msg,error};
+    raShowPushFeedback();
   };
 
   const esc=(v)=>String(v ?? '')
@@ -2305,7 +2318,11 @@ async function enablePushNotifications(){
     return;
   }
 
+  raPushSaving=true;
+  show('Push savienojuma saglabāšana...',false);
   try{
+    if(!user || !user.id) throw new Error('Sesija nav pieejama. Ielogojies vēlreiz.');
+    const pushUserId=user.id;
     let permission=Notification.permission;
     if(permission!=='granted'){
       permission=await Notification.requestPermission();
@@ -2340,25 +2357,17 @@ async function enablePushNotifications(){
       throw new Error('Push Subscription dati nav pieejami.');
     }
 
-    // Vecās šīs ierīces subscriptions dzēšam no DB,
-    // pēc tam saglabājam tikai jauno.
-    const cleanup=await db
-      .from('push_subscriptions')
-      .delete()
-      .eq('user_id',user.id);
-
-    if(cleanup.error) throw cleanup.error;
-
-    const save=await db
-      .from('push_subscriptions')
-      .insert({
-        user_id:user.id,
-        endpoint:json.endpoint,
-        p256dh:json.keys.p256dh,
-        auth:json.keys.auth
-      });
-
+    // Saglabājam šo ierīci, nedzēšot citas šī konta subscriptions.
+    const existing=await db.from('push_subscriptions')
+      .select('id').eq('user_id',pushUserId).eq('endpoint',json.endpoint).maybeSingle();
+    if(existing.error) throw existing.error;
+    const payload={user_id:pushUserId,endpoint:json.endpoint,p256dh:json.keys.p256dh,auth:json.keys.auth};
+    const query=existing.data
+      ? db.from('push_subscriptions').update(payload).eq('id',existing.data.id).eq('user_id',pushUserId)
+      : db.from('push_subscriptions').insert(payload);
+    const save=await query.select('id,user_id').single();
     if(save.error) throw save.error;
+    if(!save.data || save.data.user_id!==pushUserId) throw new Error('Push ieraksta saglabāšana nav apstiprināta.');
 
     try{
       await registration.showNotification('Towing Sistēma',{
@@ -2370,7 +2379,7 @@ async function enablePushNotifications(){
       console.warn('V12 local notification:',notificationError);
     }
 
-    show('🔔 Paziņojumi ieslēgti. Push Subscription reģistrēta šim telefonam.',false);
+    show('🔔 Push abonements saglabāts. Konta ID: '+esc(pushUserId),false);
     await renderVehiclePushStatus();
 
   }catch(e){
@@ -2382,7 +2391,8 @@ async function enablePushNotifications(){
       'Neizdevās ieslēgt paziņojumus: <b>'+esc(name)+'</b><br>'+
       esc(message)+'<br><br>Ja tas ir iPhone, atver lietotni no sākuma ekrāna un mēģini vēlreiz.'
     );
-    await renderVehiclePushStatus();
+  }finally{
+    raPushSaving=false;
   }
 }
 
