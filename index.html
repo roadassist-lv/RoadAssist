@@ -2322,7 +2322,16 @@ async function enablePushNotifications(){
   show('Push savienojuma saglabāšana...',false);
   try{
     if(!user || !user.id) throw new Error('Sesija nav pieejama. Ielogojies vēlreiz.');
-    const pushUserId=user.id;
+    const auth=await db.auth.getUser();
+    if(auth.error) throw auth.error;
+    const pushUserId=auth.data?.user?.id;
+    if(!pushUserId || user.id!==pushUserId) throw new Error('Konts ir mainījies. Pārlādē lietotni un ielogojies vēlreiz.');
+    const checkAccount=async()=>{
+      const current=await db.auth.getUser();
+      if(current.error) throw current.error;
+      if(current.data?.user?.id!==pushUserId || user?.id!==pushUserId)
+        throw new Error('Konts ir mainījies. Pārlādē lietotni un mēģini vēlreiz.');
+    };
     let permission=Notification.permission;
     if(permission!=='granted'){
       permission=await Notification.requestPermission();
@@ -2335,39 +2344,66 @@ async function enablePushNotifications(){
 
     const registration=await navigator.serviceWorker.ready;
 
-    // Izmantojam esošo Push Subscription, ja tāda jau ir.
-    // Ja tās nav, izveidojam jaunu. Esošo subscription neatceļam.
+    const b64='BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A';
+    const pad='='.repeat((4-b64.length%4)%4);
+    const bin=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+    const applicationServerKey=Uint8Array.from(bin,c=>c.charCodeAt(0));
+    const subscribe=()=>registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey});
     let subscription=await registration.pushManager.getSubscription();
+    if(!subscription) subscription=await subscribe();
 
-    if(!subscription){
-      const b64='BMqQTlhVG8-1_e3tdJh2FnvgL5Wvg2gh-R1aUQ1tKAwl8i0Qut10ZRf-DauWwH2RWotb_FAbt82eyYEGbhZ9k9A';
-      const pad='='.repeat((4-b64.length%4)%4);
-      const bin=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
-      const applicationServerKey=Uint8Array.from(bin,c=>c.charCodeAt(0));
-
-      subscription=await registration.pushManager.subscribe({
-        userVisibleOnly:true,
-        applicationServerKey
-      });
+    const findOwn=async(endpoint)=>{
+      const result=await db.from('push_subscriptions').select('id')
+        .eq('user_id',pushUserId).eq('endpoint',endpoint).maybeSingle();
+      if(result.error) throw result.error;
+      return result.data;
+    };
+    const saveSubscription=async(sub)=>{
+      const json=sub.toJSON();
+      if(!json.endpoint || !json.keys?.p256dh || !json.keys?.auth)
+        throw new Error('Push Subscription dati nav pieejami.');
+      await checkAccount();
+      let existing=await findOwn(json.endpoint);
+      const payload={user_id:pushUserId,endpoint:json.endpoint,p256dh:json.keys.p256dh,auth:json.keys.auth};
+      const write=async(row)=>{
+        await checkAccount();
+        const query=row
+          ? db.from('push_subscriptions').update(payload).eq('id',row.id).eq('user_id',pushUserId).eq('endpoint',json.endpoint)
+          : db.from('push_subscriptions').insert(payload);
+        return await query.select('id,user_id,endpoint').single();
+      };
+      let result=await write(existing);
+      const endpointConflict=e=>e?.code==='23505' && /push_subscriptions_endpoint_key/.test(e.message||'');
+      if(!existing && endpointConflict(result.error)){
+        // Another tab may have just saved this endpoint for the same account.
+        existing=await findOwn(json.endpoint);
+        if(existing) result=await write(existing);
+      }
+      if(result.error){
+        if(endpointConflict(result.error) && !existing) return {conflict:true,endpoint:json.endpoint};
+        throw result.error;
+      }
+      if(!result.data || result.data.user_id!==pushUserId || result.data.endpoint!==json.endpoint)
+        throw new Error('Push ieraksta saglabāšana nav apstiprināta. Pārbaudi SELECT/INSERT/UPDATE RLS politikas.');
+      await checkAccount();
+      return result.data;
+    };
+    let saved=await saveSubscription(subscription);
+    if(saved.conflict){
+      // Never take over a foreign/hidden row or delete other devices.
+      // Rotate only this browser's subscription, once, for the authenticated account.
+      show('Šī telefona endpoint jau ir aizņemts. Atjaunojam tikai šī telefona abonementu...',false);
+      await checkAccount();
+      const oldEndpoint=saved.endpoint;
+      const removed=await subscription.unsubscribe();
+      if(!removed) throw new Error('Neizdevās atcelt šī telefona veco abonementu. Mēģini vēlreiz.');
+      await checkAccount();
+      subscription=await subscribe();
+      if(subscription.toJSON().endpoint===oldEndpoint)
+        throw new Error('Pārlūks atgrieza to pašu aizņemto endpoint. Abonements nav saglabāts; nepieciešama administratora pārbaude.');
+      saved=await saveSubscription(subscription);
+      if(saved.conflict) throw new Error('Arī jaunais endpoint ir aizņemts. Abonements nav saglabāts; nepieciešama administratora pārbaude.');
     }
-
-    const json=subscription.toJSON();
-
-    if(!json.endpoint || !json.keys || !json.keys.p256dh || !json.keys.auth){
-      throw new Error('Push Subscription dati nav pieejami.');
-    }
-
-    // Saglabājam šo ierīci, nedzēšot citas šī konta subscriptions.
-    const existing=await db.from('push_subscriptions')
-      .select('id').eq('user_id',pushUserId).eq('endpoint',json.endpoint).maybeSingle();
-    if(existing.error) throw existing.error;
-    const payload={user_id:pushUserId,endpoint:json.endpoint,p256dh:json.keys.p256dh,auth:json.keys.auth};
-    const query=existing.data
-      ? db.from('push_subscriptions').update(payload).eq('id',existing.data.id).eq('user_id',pushUserId)
-      : db.from('push_subscriptions').insert(payload);
-    const save=await query.select('id,user_id').single();
-    if(save.error) throw save.error;
-    if(!save.data || save.data.user_id!==pushUserId) throw new Error('Push ieraksta saglabāšana nav apstiprināta.');
 
     try{
       await registration.showNotification('Towing Sistēma',{
@@ -2379,7 +2415,7 @@ async function enablePushNotifications(){
       console.warn('V12 local notification:',notificationError);
     }
 
-    show('🔔 Push abonements saglabāts. Konta ID: '+esc(pushUserId),false);
+    show('🔔 Push abonements saglabāts. Konta ID: '+esc(pushUserId)+'; ieraksta ID: '+esc(saved.id),false);
     await renderVehiclePushStatus();
 
   }catch(e){
