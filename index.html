@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Towing Sistēma</title>
+<title>RoadAssist — TEST driver finance</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -56,7 +56,7 @@ main{padding:12px}
 </style>
 </head>
 
-<body>
+<body><div class="notice" style="margin:0;border-radius:0;background:#fff1c7">TESTA VERSIJA — jauns vadītāja kases un algas periods. Vecā vēsture saglabāta atsevišķi. ADAC paliek mašīnai.</div>
 
 <header>
 <b>TOWING SISTĒMA</b>
@@ -978,9 +978,10 @@ async function loadOwnerOverview(){
   const clients=cl.data||[], orders=or.data||[];
   let cash=0,bank=0,partner=0,total=0,km=0;
   for(const o of orders){const c=clients.find(x=>Number(x.id)===Number(o.client_id)); const p=c?.payment_type||''; const amount=Number(o.cash_received||o.price||0); total+=Number(o.price||0);km+=Number(o.kilometers||0); if(p==='cash')cash+=amount; else if(p==='partner')partner+=Number(o.partner_debt||0); else bank+=Number(o.price||0);}
-  const salary=(cs.data||[]).reduce((a,x)=>a+Number(x.driver_salary||0),0);
-  const dispReceived=(dt.data||[]).filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
-  const toOwner=(dt.data||[]).filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
+  const newCash=await raTestRPC('ra_test_cash_state',{});
+  const salary=(cs.data||[]).reduce((a,x)=>a+Number(x.driver_salary||0),0)+newCash.settlements.filter(x=>x.closed_at>=f&&x.closed_at<=t).reduce((a,x)=>a+Number(x.driver_salary),0);
+  const dispReceived=(dt.data||[]).filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0)+newCash.movements.filter(x=>x.kind==='settlement'&&x.created_at>=f&&x.created_at<=t).reduce((a,x)=>a+Number(x.amount),0);
+  const toOwner=(dt.data||[]).filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0)-newCash.movements.filter(x=>x.kind==='owner'&&x.created_at>=f&&x.created_at<=t).reduce((a,x)=>a+Number(x.amount),0);
   const adakHanded=(dc.data||[]).filter(x=>x.tx_type==='handed_to_adak').reduce((a,x)=>a+Number(x.amount||0),0);
   box.innerHTML=`<div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${orders.length}</b></div><div class="finance-card">Apgrozījums<br><b>€${total.toFixed(2)}</b></div><div class="finance-card">Skaidrā naudā<br><b>€${cash.toFixed(2)}</b></div><div class="finance-card">Pārskaitījumi / līgumi<br><b>€${bank.toFixed(2)}</b></div><div class="finance-card">Adak daļa<br><b>€${partner.toFixed(2)}</b></div><div class="finance-card">Nobraukums pasūtījumos<br><b>${km.toFixed(0)} km</b></div><div class="finance-card">Vadītāju algas<br><b>€${salary.toFixed(2)}</b></div><div class="finance-card">Saņēmis dispečers<br><b>€${dispReceived.toFixed(2)}</b></div><div class="finance-card">Nodots vadībai<br><b>€${toOwner.toFixed(2)}</b></div><div class="finance-card">Nodots Adakam<br><b>€${adakHanded.toFixed(2)}</b></div></div>`;
 }
@@ -1162,92 +1163,12 @@ function lvDateToIso(value){
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 async function loadDriverPay(){
-
-let did=Number(v('payDriver'));
-let from=lvDateToIso(v('payFrom'));
-let to=lvDateToIso(v('payTo'));
-if(!did){document.getElementById('payResult').innerHTML='<div class="notice error">Izvēlies vadītāju.</div>';return;}
-if(!from||!to||from>to){document.getElementById('payResult').innerHTML='<div class="notice error">Izvēlies derīgu periodu: No nedrīkst būt pēc Līdz.</div>';return;}
-
-let [r,sr]=await Promise.all([
-db.from('orders')
-.select('driver_pay,kilometers,tow_ins,extra_work_amount')
-.eq('driver_id',did)
-.eq('status','completed')
-.gte('completed_at',from+'T00:00:00')
-.lte('completed_at',to+'T23:59:59'),
-db.from('cash_settlements')
-.select('driver_salary,company_cash,total_handed,closed_at')
-.eq('driver_id',did)
-.gte('closed_at',from+'T00:00:00')
-.lte('closed_at',to+'T23:59:59')
-.order('closed_at',{ascending:false})
-]);
-
-if(r.error||sr.error){
-
-document.getElementById('payResult').innerHTML=
-'<div class="notice error">'+(r.error?.message||sr.error?.message)+'</div>';
-
-return;
-}
-
-let a=r.data||[];
-let settlements=sr.data||[];
-
-let pay=a.reduce((x,o)=>x+Number(o.driver_pay||0),0);
-let paid=settlements.reduce((x,o)=>x+Number(o.driver_salary||0),0);
-let handed=settlements.reduce((x,o)=>x+Number(o.company_cash||o.total_handed||0),0);
-let km=a.reduce((x,o)=>x+Number(o.kilometers||0),0);
-let rt=a.reduce((x,o)=>x+Number(o.tow_ins||0),0);
-let ex=a.reduce((x,o)=>x+Number(o.extra_work_amount||0),0);
-let unpaid=Math.max(0,pay-paid);
-
-document.getElementById('payResult').innerHTML=`
-<div class="finance-grid">
-
-<div class="finance-card">
-Pasūtījumi<br>
-<b>${a.length}</b>
-</div>
-
-<div class="finance-card">
-Kilometri<br>
-<b>${km}</b>
-</div>
-
-<div class="finance-card">
-Ratiņi<br>
-<b>${rt}</b>
-</div>
-
-<div class="finance-card">
-Nopelnīts<br>
-<b>€${pay.toFixed(2)}</b>
-</div>
-
-<div class="finance-card">
-Izmaksāts slēgtajos norēķinos<br>
-<b>€${paid.toFixed(2)}</b>
-</div>
-
-<div class="finance-card">
-Nodots uzņēmumam<br>
-<b>€${handed.toFixed(2)}</b>
-</div>
-
-<div class="finance-card">
-Neizmaksāts par periodu<br>
-<b>€${unpaid.toFixed(2)}</b>
-</div>
-
-</div>
-
-<p>Izvilkšana: €${ex.toFixed(2)}</p>
-<p><b>Slēgtie norēķini:</b><br>${settlements.map(s=>`${new Date(s.closed_at).toLocaleString('lv-LV')} — alga €${Number(s.driver_salary||0).toFixed(2)}, uzņēmumam €${Number(s.company_cash||s.total_handed||0).toFixed(2)}`).join('<br>')||'Nav'}</p>
-<p class="muted">Vadītāja samaksa tiek saglabāta pie pasūtījuma pabeigšanas pēc tā brīža tarifa.</p>
-`;
-
+ const out=document.getElementById('payResult');
+ try{const s=await raTestRPC('ra_test_driver_report',{p_driver_id:Number(v('payDriver')),p_from:lvDateToIso(v('payFrom')),p_to:lvDateToIso(v('payTo'))});
+ out.innerHTML=`<div class="notice">Jaunais testa periods. Nopelnīts izvēlētajās dienās un visu dienu atvērtā alga ir atsevišķi rādītāji.</div>
+ <div class="finance-grid"><div class="finance-card">Pasūtījumi<br><b>${s.count}</b></div><div class="finance-card">Km<br><b>${s.km}</b></div><div class="finance-card">Nopelnīts periodā<br><b>€${raAmount(s.earned)}</b></div><div class="finance-card">Visa nenoslēgtā alga<br><b>€${raAmount(s.open.salary)}</b></div></div>
+ <h3>Slēgtie norēķini izvēlētajās dienās</h3>${s.settlements.map(x=>'<div class="row">'+raEscape(x.closed_at)+' — alga €'+raAmount(x.driver_salary)+'; dispečeram €'+raAmount(x.company_cash)+'</div>').join('')||'Nav'}`;
+ }catch(e){out.textContent=e.message;}
 }
 
 
@@ -1262,51 +1183,40 @@ async function loadSettlementVehicles(){
   if(el.value) loadSettlementPreview();
 }
 
-async function getShiftData(vid){
-  const vr=await db.from('vehicles').select('id,name,plate,current_driver_id').eq('id',vid).single();
-  if(vr.error) throw vr.error;
-  const confirmed=await db.from('dispatcher_cash_transactions')
-    .select('settlement_id,created_at')
-    .eq('vehicle_id',vid)
-    .eq('tx_type','received_from_shift')
-    .not('settlement_id','is',null)
-    .order('created_at',{ascending:false})
-    .limit(1)
-    .maybeSingle();
 
-  let since='1970-01-01T00:00:00.000Z';
-  if(confirmed.error) throw confirmed.error;
-  if(confirmed.data?.settlement_id){
-    const cs=await db.from('cash_settlements')
-      .select('closed_at')
-      .eq('id',confirmed.data.settlement_id)
-      .maybeSingle();
-    if(cs.error) throw cs.error;
-    if(cs.data?.closed_at) since=cs.data.closed_at;
-  }
-  const [orders,expenses,clients]=await Promise.all([
-    db.from('orders').select('id,client_id,price,our_share,cash_received,partner_debt,driver_pay,driver_id,completed_at').eq('vehicle_id',vid).eq('status','completed').gt('completed_at',since).order('completed_at',{ascending:true}),
-    db.from('cash_expenses').select('id,amount,description,expense_payment_type,created_at').eq('vehicle_id',vid).gt('created_at',since).order('created_at',{ascending:true}),
-    db.from('clients').select('id,name,payment_type')
-  ]);
-  if(orders.error||expenses.error||clients.error) throw (orders.error||expenses.error||clients.error);
-  const cm=new Map((clients.data||[]).map(c=>[Number(c.id),c]));
-  const os=(orders.data||[]).map(o=>({...o,client:cm.get(Number(o.client_id))||null}));
-  const es=expenses.data||[];
-
-  let cashIncome=0,cashlessIncome=0;
-  os.forEach(o=>{
-    const p=o.client?.payment_type||'cash';
-    const our=(o.our_share!==null&&o.our_share!==undefined)?Number(o.our_share||0):Number(o.cash_received||0)-Number(o.partner_debt||0);
-    if(p==='cash' || p==='partner') cashIncome+=our; else cashlessIncome+=our;
-  });
-  const cashExpenses=es.filter(e=>(e.expense_payment_type||'cash')==='cash').reduce((a,e)=>a+Number(e.amount||0),0);
-  const cashlessExpenses=es.filter(e=>(e.expense_payment_type||'cash')!=='cash').reduce((a,e)=>a+Number(e.amount||0),0);
-  const salary=os.filter(o=>vr.data.current_driver_id&&Number(o.driver_id)===Number(vr.data.current_driver_id)).reduce((a,o)=>a+Number(o.driver_pay||0),0);
-  const cashBeforeSalary=cashIncome-cashExpenses;
-  const toDispatcher=cashBeforeSalary-salary;
-  return {vr:vr.data,since,orders:os,expenses:es,cashIncome,cashlessIncome,cashExpenses,cashlessExpenses,salary,cashBeforeSalary,toDispatcher};
+let raTestPreview=null;
+let raTestViewSeq=0;
+const raTestFinishing=new Set(),raTestPending=new Map();
+function raEscape(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function raAmount(x){return Number(x||0).toFixed(2);}
+async function raTestRPC(name,args){
+ const r=await db.rpc(name,args);
+ if(r.error)throw Error(r.error.code==='PGRST202'?'Vispirms uzstādi 01-roadassist-test-finance.sql testa projektā.':r.error.message);
+ return r.data;
 }
+function raTestWrite(name,args){
+ // Keep the request ID across a lost response/reload; remove it only after confirmation.
+ const key='ra-test-v1:'+String(user?.id||'session')+':'+name+':'+JSON.stringify(args);
+ if(raTestPending.has(key))return raTestPending.get(key);
+ let id=sessionStorage.getItem(key);
+ if(!id){id=crypto.randomUUID();sessionStorage.setItem(key,id);}
+ const promise=raTestRPC(name,{...args,p_request:id}).then(r=>{sessionStorage.removeItem(key);return r;}).finally(()=>raTestPending.delete(key));
+ raTestPending.set(key,promise);return promise;
+}
+
+async function raAll(table,columns='*',filter=q=>q){
+  const rows=[];
+  for(let offset=0;;){
+    const r=await filter(db.from(table).select(columns)).order('id').range(offset,offset+499);
+    if(r.error)throw r.error;
+    if(!r.data?.length)break;
+    rows.push(...r.data);offset+=r.data.length;
+  }
+  return rows;
+}
+async function raDriverLedger(did){return raTestRPC('ra_test_driver_ledger',{p_driver_id:did});}
+async function getShiftData(vid){return raTestRPC('ra_test_vehicle_ledger',{p_vehicle_id:vid});}
+
 
 async function loadSettlementPreview(){
   const vid=Number(document.getElementById('settleVehicle')?.value||0);
@@ -1314,10 +1224,10 @@ async function loadSettlementPreview(){
   if(!out)return;
   if(!vid){out.innerHTML='<div class="notice">Izvēlies evakuatoru.</div>';return;}
   try{
-    const s=await getShiftData(vid);
+    const s=await getShiftData(vid); raTestPreview={vid,driver:s.driver_id,token:s.token,amount:s.toDispatcher};
     const orderRows=s.orders.map(o=>`<tr><td>${new Date(o.completed_at).toLocaleString('lv-LV')}</td><td>${o.client?.name||'—'}</td><td>${o.client?.payment_type==='cash'?'Skaidra':(o.client?.payment_type==='partner'?'Partneris':'Bezskaidra')}</td><td>€${Number(o.our_share||0).toFixed(2)}</td><td>€${Number(o.driver_pay||0).toFixed(2)}</td></tr>`).join('');
     const expenseRows=s.expenses.map(e=>`<tr><td>${new Date(e.created_at).toLocaleString('lv-LV')}</td><td>${e.description||''}</td><td>${(e.expense_payment_type||'cash')==='cash'?'Skaidra nauda':'Karte / bezskaidra'}</td><td>€${Number(e.amount||0).toFixed(2)}</td></tr>`).join('');
-    out.innerHTML=`<div class="panel"><h3 style="margin-top:0">📄 Maiņas lapa — ${s.vr.name||''} ${s.vr.plate||''}</h3>
+    out.innerHTML=`<div class="panel"><h3 style="margin-top:0">📄 ${raEscape(s.driver_name)} — ${s.vr.name||''} ${s.vr.plate||''}</h3>
     <div class="cash-grid">
       <div class="cash-card">Skaidrā naudā saņemts<br><b>€${s.cashIncome.toFixed(2)}</b></div>
       <div class="cash-card">Bezskaidrā / līgumi<br><b>€${s.cashlessIncome.toFixed(2)}</b></div>
@@ -1329,97 +1239,57 @@ async function loadSettlementPreview(){
     </div>
     <details style="margin-top:12px"><summary><b>Pasūtījumi (${s.orders.length})</b></summary><div style="overflow:auto"><table><thead><tr><th>Laiks</th><th>Klients</th><th>Apmaksa</th><th>Mūsu daļa</th><th>Alga</th></tr></thead><tbody>${orderRows||'<tr><td colspan="5">Nav</td></tr>'}</tbody></table></div></details>
     <details style="margin-top:12px"><summary><b>Izdevumi (${s.expenses.length})</b></summary><div style="overflow:auto"><table><thead><tr><th>Laiks</th><th>Apraksts</th><th>Apmaksa</th><th>Summa</th></tr></thead><tbody>${expenseRows||'<tr><td colspan="4">Nav</td></tr>'}</tbody></table></div></details>
-    <button class="green" style="margin-top:15px;width:100%" onclick="closeSettlement(${vid})">PIEŅĒMU €${s.toDispatcher.toFixed(2)} NO VADĪTĀJA</button></div>`;
+    <button class="green" style="margin-top:15px;width:100%" onclick="closeSettlement(${vid})">${s.toDispatcher<0?"IZMAKSĀJU VADĪTĀJAM":"PIEŅĒMU NO VADĪTĀJA"} €${Math.abs(s.toDispatcher).toFixed(2)}</button></div>`;
   }catch(e){out.innerHTML='<div class="notice error">Neizdevās ielādēt maiņas lapu: '+(e.message||e)+'</div>';}
 }
 
 async function closeSettlement(vid){
-  if(!confirm('Apstiprināt, ka dispečers faktiski saņēma šo naudu no vadītāja? Pēc tam maiņa tiks aizvērta.'))return;
-  const out=document.getElementById('settlementResult');
-  try{
-    const s=await getShiftData(vid);
-    const snapshot={orders:s.orders.map(o=>({id:o.id,completed_at:o.completed_at,client:o.client?.name||'',payment_type:o.client?.payment_type||'',our_share:Number(o.our_share||0),driver_pay:Number(o.driver_pay||0)})),expenses:s.expenses.map(e=>({id:e.id,created_at:e.created_at,description:e.description||'',payment_type:e.expense_payment_type||'cash',amount:Number(e.amount||0)}))};
-    const btn=event?.currentTarget;
-    if(btn){btn.disabled=true;btn.textContent='SAGLABĀ...';}
-    const ins=await db.from('cash_settlements').insert({
-      vehicle_id:vid,driver_id:s.vr.current_driver_id||null,
-      total_received:s.cashIncome+s.cashlessIncome,total_expenses:s.cashExpenses+s.cashlessExpenses,
-      cash_before_settlement:s.cashBeforeSalary,driver_salary:s.salary,company_cash:s.toDispatcher,total_handed:s.toDispatcher,
-      cash_income:s.cashIncome,cashless_income:s.cashlessIncome,cash_expenses_total:s.cashExpenses,cashless_expenses_total:s.cashlessExpenses,
-      shift_snapshot:snapshot
-    }).select('id').single();
-    if(ins.error) throw ins.error;
-    const tx=await db.from('dispatcher_cash_transactions').insert({tx_type:'received_from_shift',amount:s.toDispatcher,settlement_id:ins.data.id,vehicle_id:vid,driver_id:s.vr.current_driver_id||null,note:'Faktiski saņemts no vadītāja, aizverot maiņu'});
-    if(tx.error){
-      await db.from('cash_settlements').delete().eq('id',ins.data.id);
-      throw tx.error;
-    }
-    out.innerHTML='<div class="notice">✅ Maiņa aizvērta. Dispečera kasē ieskaitīti €'+s.toDispatcher.toFixed(2)+'. Vadītāja jaunais periods sākas no nulles.</div>';
-    await loadDispatcherCashControl();
-  }catch(e){out.innerHTML='<div class="notice error">Neizdevās aizvērt maiņu: '+(e.message||e)+'</div>';}
+ const out=document.getElementById('settlementResult'), p=raTestPreview;
+ if(!p||p.vid!==vid){await loadSettlementPreview();return;}
+ if(!confirm((p.amount<0?'Apstiprini izmaksu vadītājam ':'Apstiprini saņemšanu no vadītāja ')+Math.abs(p.amount).toFixed(2)+' EUR un algas norēķinu.'))return;
+ try{
+ const r=await raTestWrite('ra_test_close',{p_driver_id:p.driver,p_vehicle_id:vid,p_token:p.token});
+ raTestPreview=null;out.innerHTML='<div class="notice">✅ Norēķins saglabāts. Alga: €'+raAmount(r.salary)+'. Dispečera izmaiņa: €'+raAmount(r.toDispatcher)+'.</div>';
+ await loadDispatcherCashControl();
+ }catch(e){out.textContent=e.message;}
 }
 
 async function loadDispatcherCashControl(){
-  const box=document.getElementById('dispatcherCashControl'); if(!box)return;
-  const [txr,sr,vr,dr]=await Promise.all([
-    db.from('dispatcher_cash_transactions').select('id,tx_type,amount,note,created_at,settlement_id,vehicle_id,driver_id').order('created_at',{ascending:false}).limit(300),
-    db.from('cash_settlements').select('id,closed_at,vehicle_id,driver_id,cash_income,cashless_income,cash_expenses_total,cashless_expenses_total,driver_salary,company_cash').order('closed_at',{ascending:false}).limit(100),
-    db.from('vehicles').select('id,name,plate'),
-    db.from('drivers').select('id,name')
-  ]);
-  if(txr.error||sr.error){box.innerHTML='<div class="notice error">'+(txr.error?.message||sr.error?.message)+'</div>';return;}
-  const tx=txr.data||[], settlements=sr.data||[], vehicles=vr.data||[], drivers=dr.data||[];
-  const received=tx.filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
-  const handed=tx.filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
-  const balance=received-handed;
-  box.innerHTML=`<div class="cash-grid">
-    <div class="cash-card">Dispečers saņēmis no maiņām<br><b>€${received.toFixed(2)}</b></div>
-    <div class="cash-card">Nodots vadībai<br><b>€${handed.toFixed(2)}</b></div>
-    <div class="cash-card">Jābūt pie dispečera<br><b>€${balance.toFixed(2)}</b></div>
-  </div>
-  <div class="panel" style="margin-top:12px;border:2px solid #dfe4e8"><h3 style="margin-top:0">Nodot naudu vadībai</h3><div class="form">
-    <label class="field">Summa, €<input id="ownerCashAmount" type="number" min="0.01" step="0.01" placeholder="${Math.max(0,balance).toFixed(2)}"></label>
-    <label class="field">Piezīme<input id="ownerCashNote" placeholder="Kam un kur nodots"></label>
-  </div><button class="primary" style="margin-top:10px;width:100%" onclick="handCashToOwner()">NODOTS VADĪBAI</button></div>
-  <details open style="margin-top:12px"><summary><b>Slēgtās maiņas</b></summary><div style="overflow:auto"><table><thead><tr><th>Datums</th><th>Mašīna</th><th>Vadītājs</th><th>Skaidra</th><th>Skaidras izmaksas</th><th>Alga</th><th>Dispečeram</th></tr></thead><tbody>
-  ${settlements.map(s=>{const v=vehicles.find(x=>Number(x.id)===Number(s.vehicle_id));const d=drivers.find(x=>Number(x.id)===Number(s.driver_id));const ok=tx.some(t=>t.tx_type==='received_from_shift'&&Number(t.settlement_id)===Number(s.id));return `<tr><td>${new Date(s.closed_at).toLocaleString('lv-LV')}</td><td>${v?`${v.name} ${v.plate}`:'—'}</td><td>${d?.name||'—'}</td><td>€${Number(s.cash_income||0).toFixed(2)}</td><td>€${Number(s.cash_expenses_total||0).toFixed(2)}</td><td>€${Number(s.driver_salary||0).toFixed(2)}</td><td><b>€${Number(s.company_cash||0).toFixed(2)}</b><br><small>${ok?'✅ Saņemts':'⚠️ Vecs ieraksts — nav apstiprināts'}</small></td></tr>`}).join('')||'<tr><td colspan="7">Nav</td></tr>'}
-  </tbody></table></div></details>
-  <details style="margin-top:12px"><summary><b>Dispečera kases kustība</b></summary>${tx.map(t=>`${new Date(t.created_at).toLocaleString('lv-LV')} — ${t.tx_type==='received_from_shift'?'Saņemts no maiņas':'Nodots vadībai'} — €${Number(t.amount||0).toFixed(2)}${t.note?' — '+t.note:''}`).join('<br>')||'Nav'}</details>`;
+ const box=document.getElementById('dispatcherCashControl');if(!box)return;
+ try{const s=await raTestRPC('ra_test_cash_state',{});
+ box.innerHTML=`<div class="notice">Jaunais testa periods. Negatīva dispečera summa nozīmē izmaksu vadītājam / vajadzīgu finansējumu.</div>
+ <div class="cash-grid"><div class="cash-card">No vadītājiem, neto<br><b>€${raAmount(s.received)}</b></div><div class="cash-card">Nodots vadībai<br><b>€${raAmount(s.handed)}</b></div><div class="cash-card">Dispečera atlikums<br><b>€${raAmount(s.balance)}</b></div></div>
+ <label class="field">Summa vadībai<input id="ownerCashAmount" type="number" step="0.01" min="0.01"></label><label class="field">Piezīme<input id="ownerCashNote"></label><button onclick="handCashToOwner()">NODOT VADĪBAI</button>
+ <h3>Jaunie slēgtie norēķini</h3>${s.settlements.map(x=>`<div class="row">#${x.id} — ${raEscape(x.driver_name)} — ${new Date(x.closed_at).toLocaleString('lv-LV')}<br>Alga €${raAmount(x.driver_salary)}; dispečeram €${raAmount(x.company_cash)}<br>${raEscape(x.vehicle_name)}</div>`).join('')||'Nav'}
+ <details><summary>Vecā testa vēsture</summary><button onclick="raLoadLegacyCash()">PARĀDĪT</button><div id="raLegacyCash"></div></details>`;
+ }catch(e){box.textContent=e.message;}
+}
+async function raLoadLegacyCash(){
+ const box=document.getElementById('raLegacyCash');if(!box)return;
+ try{const rows=await raAll('cash_settlements');box.innerHTML=rows.map(x=>'<div class="row">Vecais #'+raEscape(x.id)+' — '+raEscape(x.closed_at)+'; alga €'+raAmount(x.driver_salary)+'; uzņēmumam €'+raAmount(x.company_cash)+'</div>').join('')||'Nav';}catch(e){box.textContent=e.message;}
 }
 
 async function handCashToOwner(){
-  const amount=Number(document.getElementById('ownerCashAmount')?.value||0);
-  const note=(document.getElementById('ownerCashNote')?.value||'').trim();
-  if(!amount||amount<=0){alert('Ievadi summu.');return;}
-  const txr=await db.from('dispatcher_cash_transactions').select('tx_type,amount');
-  if(txr.error){alert(txr.error.message);return;}
-  const received=(txr.data||[]).filter(x=>x.tx_type==='received_from_shift').reduce((a,x)=>a+Number(x.amount||0),0);
-  const handed=(txr.data||[]).filter(x=>x.tx_type==='handed_to_owner').reduce((a,x)=>a+Number(x.amount||0),0);
-  const balance=received-handed;
-  if(amount>balance){alert('Pie dispečera jābūt tikai €'+balance.toFixed(2)+'.');return;}
-  if(!confirm('Apstiprināt €'+amount.toFixed(2)+' nodošanu vadībai?'))return;
-  const r=await db.from('dispatcher_cash_transactions').insert({tx_type:'handed_to_owner',amount,note:note||'Dispečers nodeva naudu vadībai'});
-  if(r.error){alert(r.error.message);return;}
-  await loadDispatcherCashControl();
+ const amount=Number(document.getElementById('ownerCashAmount')?.value),note=document.getElementById('ownerCashNote')?.value||'';
+ if(!Number.isFinite(amount)||amount<=0){alert('Ievadi summu');return;}
+ if(!confirm('Nodot vadībai €'+raAmount(amount)+'?'))return;
+ try{await raTestWrite('ra_test_hand_owner',{p_amount:amount,p_note:note});await loadDispatcherCashControl();}catch(e){alert(e.message);}
 }
 
 async function addCashExpense(){
-  const amount=Number(document.getElementById('cashExpenseAmount')?.value||0);
-  const description=(document.getElementById('cashExpenseDescription')?.value||'').trim();
-  const out=document.getElementById('cashExpenseMsg');
-  if(!amount||amount<=0||!description){if(out)out.innerHTML='<div class="notice error">Ievadi summu un izdevuma aprakstu.</div>';return;}
-  const expense_payment_type=document.getElementById('cashExpensePaymentType')?.value||'cash';
-  const r=await db.from('cash_expenses').insert({vehicle_id:vehicleId,driver_id:currentVehicleDriverId||null,amount,description,expense_payment_type});
-  if(r.error){if(out)out.innerHTML='<div class="notice error">Neizdevās saglabāt izdevumu: '+r.error.message+'</div>';return;}
-  document.getElementById('cashExpenseAmount').value='';document.getElementById('cashExpenseDescription').value='';
-  if(out)out.innerHTML='<div class="notice">Izdevums −€'+amount.toFixed(2)+' saglabāts.</div>';
-  await loadVehicleCash();
+ const out=document.getElementById('cashExpenseMsg');
+ try{const amount=Number(document.getElementById('cashExpenseAmount')?.value),description=(document.getElementById('cashExpenseDescription')?.value||'').trim();
+ if(!Number.isFinite(amount)||amount<=0||!description)throw Error('Ievadi summu un aprakstu');
+ await raTestWrite('ra_test_expense',{p_vehicle_id:vehicleId,p_driver_id:currentVehicleDriverId,p_amount:amount,p_description:description,p_payment:document.getElementById('cashExpensePaymentType')?.value||'cash'});
+ await loadVehicleCash();}catch(e){if(out)out.textContent=e.message;}
 }
 
-async function loadVehicleCash(){
+async function loadVehicleCash(shared=null){
   const box=document.getElementById('vehicleCashBox'); if(!box)return;
   try{
-    const s=await getShiftData(vehicleId);
+    const expectedDriver=currentVehicleDriverId;
+    const s=shared||await getShiftData(vehicleId);
+    if(String(s.driver_id)!==String(currentVehicleDriverId)||expectedDriver!==currentVehicleDriverId)return;
     raSetMobileHTML(box,`<details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">💶 Kase</summary><div class="panel" style="margin-top:10px;border:2px solid #dfe4e8"><div class="cash-grid">
       <div class="cash-card">Skaidrā naudā saņemts<br><b>€${s.cashIncome.toFixed(2)}</b></div>
       <div class="cash-card">Bezskaidrā / līgumi<br><b>€${s.cashlessIncome.toFixed(2)}</b></div>
@@ -1444,7 +1314,7 @@ async function loadAdakDebtDispatcher(){
     db.from('vehicles').select('id,name,plate,current_driver_id').eq('active',true).order('id'),
     db.from('drivers').select('id,name'),
     db.from('adak_debts').select('vehicle_id,balance,updated_at'),
-    db.from('adak_dispatcher_transactions').select('id,vehicle_id,driver_id,tx_type,amount,note,created_at,drivers(name)').order('created_at',{ascending:false}).limit(200)
+    raAll('adak_dispatcher_transactions','id,vehicle_id,driver_id,tx_type,amount,note,created_at,drivers(name)').then(data=>({data:data.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))}))
   ]);
 
   if(vr.error||debts.error||tr.error){
@@ -1512,33 +1382,16 @@ async function loadAdakDebtDispatcher(){
 }
 
 async function acceptAdakFromDriver(vid,did){
-  const input=document.getElementById('adakTake_'+vid);
-  const amount=Number(input?.value||0);
-  if(!amount||amount<=0){alert('Ievadi saņemto Adaka naudas summu.');return;}
-  if(!confirm('Pieņemt €'+amount.toFixed(2)+' no šīs mašīnas? Vadītāja/mašīnas Adaka parāds samazināsies, bet šī summa pāries uz dispečera Adaka atlikumu.'))return;
-
-  const r=await db.rpc('transfer_adak_to_dispatcher',{
-    p_vehicle_id:Number(vid),
-    p_driver_id:did?Number(did):null,
-    p_amount:amount,
-    p_note:'Vadītājs nodeva Adaka naudu dispečeram'
-  });
-  if(r.error){alert('Neizdevās pieņemt Adaka naudu: '+r.error.message);return;}
-  await loadAdakDebtDispatcher();
+ const amount=Number(document.getElementById('adakTake_'+vid)?.value);
+ if(!Number.isFinite(amount)||amount<=0){alert('Ievadi summu');return;}
+ if(!confirm('Saņemts no mašīnas ADAC €'+raAmount(amount)+'?'))return;
+ try{await raTestWrite('ra_test_adac',{p_action:'dispatcher',p_vehicle_id:Number(vid),p_driver_id:did?Number(did):null,p_amount:amount,p_note:'ADAC saņemts no mašīnas'});await loadAdakDebtDispatcher();}catch(e){alert(e.message);}
 }
-
 async function handDispatcherAdak(){
-  const amount=Number(document.getElementById('dispatcherAdakHandAmount')?.value||0);
-  const note=(document.getElementById('dispatcherAdakHandNote')?.value||'').trim();
-  if(!amount||amount<=0){alert('Ievadi Adakam nodoto summu.');return;}
-  if(!confirm('Apstiprināt, ka dispečers nodeva Adakam €'+amount.toFixed(2)+'?'))return;
-
-  const r=await db.rpc('dispatcher_hands_adak',{
-    p_amount:amount,
-    p_note:note||'Dispečers nodeva naudu Adakam'
-  });
-  if(r.error){alert('Neizdevās saglabāt nodošanu Adakam: '+r.error.message);return;}
-  await loadAdakDebtDispatcher();
+ const amount=Number(document.getElementById('dispatcherAdakHandAmount')?.value),note=document.getElementById('dispatcherAdakHandNote')?.value||'';
+ if(!Number.isFinite(amount)||amount<=0){alert('Ievadi summu');return;}
+ if(!confirm('Nodot ADAC €'+raAmount(amount)+'?'))return;
+ try{await raTestWrite('ra_test_adac',{p_action:'hand',p_vehicle_id:null,p_driver_id:null,p_amount:amount,p_note:note});await loadAdakDebtDispatcher();}catch(e){alert(e.message);}
 }
 
 async function loadVehicleAdakDebt(){
@@ -1560,17 +1413,13 @@ async function loadVehicleAdakDebt(){
 }
 
 async function recordAdakCollection(){
-  const amount=Number(document.getElementById('adakCollectionAmount')?.value||0);
-  const note=(document.getElementById('adakCollectionNote')?.value||'').trim();
-  const out=document.getElementById('adakCollectionMsg');
-  if(!currentVehicleDriverId){if(out)out.innerHTML='<div class="notice error">Vispirms izvēlies vadītāju.</div>';return;}
-  if(!amount||amount<=0){if(out)out.innerHTML='<div class="notice error">Ievadi summu.</div>';return;}
-  const r=await db.rpc('record_adak_collection',{p_vehicle_id:Number(vehicleId),p_driver_id:Number(currentVehicleDriverId),p_amount:amount,p_note:note||null});
-  if(r.error){if(out)out.innerHTML='<div class="notice error">Neizdevās reģistrēt inkasāciju: '+r.error.message+'</div>';return;}
-  await loadVehicleAdakDebt();
+ const out=document.getElementById('adakCollectionMsg');
+ try{const amount=Number(document.getElementById('adakCollectionAmount')?.value),note=document.getElementById('adakCollectionNote')?.value||'';
+ if(!Number.isFinite(amount)||amount<=0)throw Error('Ievadi summu');
+ await raTestWrite('ra_test_adac',{p_action:'collect',p_vehicle_id:vehicleId,p_driver_id:currentVehicleDriverId,p_amount:amount,p_note:note});await loadVehicleAdakDebt();
+ }catch(e){if(out)out.textContent=e.message;}
 }
 
-/* ВОДИТЕЛЬ */
 async function initDriver(){
 
 let d=await db
@@ -1623,7 +1472,7 @@ raStartMobileRefresh();
 
 /* КАБИНЕТ МАШИНЫ */
 async function initVehicle(){
-const vr=await db.from('vehicles').select('id,name,plate,current_driver_id,work_status').eq('id',vehicleId).single();if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';document.getElementById('roleLabel').textContent='🚛 '+vehicleName+' — '+vehiclePlate;if('serviceWorker' in navigator){try{await navigator.serviceWorker.register('./sw.js');}catch(e){console.warn('Service Worker:',e);}}document.getElementById('dispatcherTabs').style.display='none';document.getElementById('new').classList.remove('active');document.getElementById('orders').classList.remove('active');document.getElementById('driverView').classList.add('active');await loadVehicleOrders();
+const vr=await db.from('vehicles').select('id,name,plate,current_driver_id,work_status').eq('id',vehicleId).single();if(vr.error){currentVehicleDriverId=null;throw vr.error;}if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';document.getElementById('roleLabel').textContent='🚛 '+vehicleName+' — '+vehiclePlate;if('serviceWorker' in navigator){try{await navigator.serviceWorker.register('./sw.js');}catch(e){console.warn('Service Worker:',e);}}document.getElementById('dispatcherTabs').style.display='none';document.getElementById('new').classList.remove('active');document.getElementById('orders').classList.remove('active');document.getElementById('driverView').classList.add('active');await loadVehicleOrders();
   raStartMobileRefresh();
 }
 
@@ -1669,6 +1518,7 @@ async function loadVehicleDriverSelfSelect(){
 }
 
 async function saveVehicleSelfDriver(){
+++raTestViewSeq;for(const id of ['vehicleCashBox','vehicleSalaryBox'])document.getElementById(id)?.replaceChildren();
   const el=document.getElementById('vehicleSelfDriverSelect');
   const box=document.getElementById('vehicleDriverSelfContent');
   if(!el)return;
@@ -1684,7 +1534,7 @@ async function saveVehicleSelfDriver(){
 
   if(box)box.innerHTML='<div class="notice">Saglabāju '+selectedName+'...</div>';
 
-  let call=await db.rpc('set_vehicle_driver',{
+  let call=await db.rpc('ra_test_set_driver',{
     p_vehicle_id:vehicleId,
     p_driver_id:did,
     p_confirm_transfer:false
@@ -1713,7 +1563,7 @@ async function saveVehicleSelfDriver(){
       return;
     }
 
-    call=await db.rpc('set_vehicle_driver',{
+    call=await db.rpc('ra_test_set_driver',{
       p_vehicle_id:vehicleId,
       p_driver_id:did,
       p_confirm_transfer:true
@@ -1738,10 +1588,11 @@ async function saveVehicleSelfDriver(){
 }
 
 async function clearVehicleSelfDriver(){
+++raTestViewSeq;for(const id of ['vehicleCashBox','vehicleSalaryBox'])document.getElementById(id)?.replaceChildren();
   const box=document.getElementById('vehicleDriverSelfContent');
   if(box)box.innerHTML='<div class="notice">Noņemu vadītāju no šīs mašīnas...</div>';
 
-  const call=await db.rpc('set_vehicle_driver',{
+  const call=await db.rpc('ra_test_set_driver',{
     p_vehicle_id:vehicleId,
     p_driver_id:null,
     p_confirm_transfer:false
@@ -1761,7 +1612,7 @@ async function clearVehicleSelfDriver(){
 }
 
 /* ЗАРПЛАТА / КИЛОМЕТРЫ МАШИНЫ */
-async function loadVehicleSalary(){
+async function loadVehicleSalary(shared=null){
   const host=document.getElementById('vehicleSalaryBox');
   if(!host)return;
 
@@ -1770,29 +1621,10 @@ async function loadVehicleSalary(){
     return;
   }
 
-  const last=await db.from('cash_settlements')
-    .select('closed_at')
-    .eq('vehicle_id',vehicleId)
-    .order('closed_at',{ascending:false})
-    .limit(1)
-    .maybeSingle();
-
-  const since=last.data?.closed_at||'1970-01-01T00:00:00.000Z';
-
-  const r=await db.from('orders')
-    .select('driver_pay,kilometers,tow_ins,completed_at,driver_id')
-    .eq('vehicle_id',vehicleId)
-    .eq('driver_id',currentVehicleDriverId)
-    .eq('status','completed')
-    .gt('completed_at',since);
-
-  if(r.error){
-    raSetMobileHTML(host,`<details style="margin-top:15px"><summary style="cursor:pointer;font-weight:700">💰 Mana samaksa</summary><div class="notice error" style="margin-top:10px">Neizdevās ielādēt samaksu: ${r.error.message}</div></details>`);
-    return;
-  }
-
-  const rows=r.data||[];
-  const todayKey=new Date().toLocaleDateString('sv-SE');
+  let rows;
+  try{const s=shared||await getShiftData(vehicleId);if(String(s.driver_id)!==String(currentVehicleDriverId))return;rows=s.orders;}
+  catch(e){raSetMobileHTML(host,'<div class="notice error">'+e.message+'</div>');return;}
+  const todayKey=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Riga'});
 
   let todayKm=0,todayPay=0,todayRt=0;
   let dayKm=0,nightKm=0,totalKm=0,dayPay=0,nightPay=0,totalPay=0,totalRt=0;
@@ -1802,9 +1634,9 @@ async function loadVehicleSalary(){
     const pay=Number(o.driver_pay||0);
     const rt=Number(o.tow_ins||0);
     const d=new Date(o.completed_at);
-    const h=d.getHours();
-    const dow=d.getDay();
-    const isWeekend=dow===0||dow===6;
+    const h=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Riga',hour:'2-digit',hourCycle:'h23'}).format(d));
+    const dow=new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Riga',weekday:'short'}).format(d);
+    const isWeekend=dow==='Sun'||dow==='Sat';
     const isNight=isWeekend||h>=22||h<7;
 
     totalKm+=km;
@@ -1819,7 +1651,7 @@ async function loadVehicleSalary(){
       dayPay+=pay;
     }
 
-    if(d.toLocaleDateString('sv-SE')===todayKey){
+    if(d.toLocaleDateString('sv-SE',{timeZone:'Europe/Riga'})===todayKey){
       todayKm+=km;
       todayPay+=pay;
       todayRt+=rt;
@@ -1854,8 +1686,10 @@ async function loadVehicleSalary(){
 
 /* ЗАКАЗЫ МАШИНЫ */
 async function loadVehicleOrders(){
-const vr=await db.from('vehicles').select('current_driver_id,work_status').eq('id',vehicleId).single();if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';
-const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,cash_received,our_share,partner_debt,customer_payment_comment,transport_type,tow_ins,extra_work,extra_work_amount,clients(payment_type),drivers(id,name)').order('id',{ascending:false});if(r.error){raSetMobileHTML(document.getElementById('driverHead'),'<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div><h2>Pasūtījumi</h2><div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>');raSetMobileHTML(document.getElementById('driverOrders'),'');return;}
+const raSeq=++raTestViewSeq;
+for(const id of ['vehicleCashBox','vehicleSalaryBox']){const el=document.getElementById(id);if(el)el.replaceChildren();}
+const vr=await db.from('vehicles').select('current_driver_id,work_status').eq('id',vehicleId).single();if(raSeq!==raTestViewSeq)return;if(vr.error){currentVehicleDriverId=null;throw vr.error;}if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';
+const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,cash_received,our_share,partner_debt,customer_payment_comment,transport_type,tow_ins,extra_work,extra_work_amount,clients(payment_type),drivers(id,name)').order('id',{ascending:false});if(raSeq!==raTestViewSeq)return;if(r.error){raSetMobileHTML(document.getElementById('driverHead'),'<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div><h2>Pasūtījumi</h2><div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>');raSetMobileHTML(document.getElementById('driverOrders'),'');return;}
 const available=(r.data||[]).filter(o=>{
   if(o.status==='completed') return false;
   if(o.status==='new' && o.vehicle_id===null) return true;
@@ -1864,10 +1698,9 @@ const available=(r.data||[]).filter(o=>{
 const data=raMobileVisibleOrders(available,'vehicle_id',vehicleId);const statusText=currentVehicleWorkStatus==='on_line'?'🟢 Uz līnijas':currentVehicleWorkStatus==='service'?'🔧 Servisā':currentVehicleWorkStatus==='inactive'?'⚪ Neizmanto':'🟡 Nav vadītāja';raSetMobileHTML(document.getElementById('driverHead'),'<div class="muted">🚛 Mašīnas kabinets</div><h2>'+vehicleName+' — '+vehiclePlate+'</h2><p>Pašreizējais vadītājs: <b>'+(currentVehicleDriverName||'Nav piešķirts')+'</b></p><p>Stāvoklis: <b>'+statusText+'</b></p><p class="muted">Šis telefons ir pastāvīgi piesaistīts šim evakuatoram.</p><div id="vehicleDriverSelfBox" class="panel" style="margin-top:15px;border:2px solid #dfe4e8"><h3 style="margin-top:0">👤 Kas šodien strādā uz šīs mašīnas?</h3><p class="muted">Vadītājam nav sava sistēmas konta. Izvēlies savu vārdu uz šī evakuatora telefona.</p><div id="vehicleDriverSelfContent">Ielādē vadītājus...</div></div><div id="vehiclePushBox" class="panel" style="margin-top:15px;border:2px solid #dfe4e8"></div><div id="vehicleCashBox"></div><div id="vehicleAdakBox"></div><div id="vehicleSalaryBox"></div>');
 await loadVehicleDriverSelfSelect();
 await renderVehiclePushStatus();
-await loadVehicleCash();
+try{const shared=await getShiftData(vehicleId);if(raSeq!==raTestViewSeq)return;await loadVehicleCash(shared);await loadVehicleSalary(shared);}catch(e){for(const id of ['vehicleCashBox','vehicleSalaryBox']){const box=document.getElementById(id);if(box)box.textContent=e.message;}}
 await loadVehicleAdakDebt();
-await loadVehicleSalary();
-raSetMobileHTML(document.getElementById('driverOrders'),data.map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'} <span class="muted">(${o.transport_type==='van'?'Buss':'Vieglais auto'})</span></h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${Number(o.price||0).toFixed(2)}</b></p><p>Mūsu daļa: <b>€${Number(o.our_share||0).toFixed(2)}</b>${o.clients?.payment_type==='partner' ? ` · Adakam: <b>€${Number(o.partner_debt||0).toFixed(2)}</b>` : ''}</p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new' ? (currentVehicleWorkStatus==='on_line' && currentVehicleDriverId ? `<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>` : `<div class="notice">Šī mašīna pašlaik nevar pieņemt pasūtījumu: vispirms izvēlies vadītāju šī telefona augšdaļā un pārliecinies, ka mašīna ir uz līnijas.</div>`) : ''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" min="0" max="4" step="1" value="${Number(o.tow_ins||0)}"></label><label class="field">Klienta samaksāts, €<input id="pay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.cash_received||o.price||0).toFixed(2)}"></label><label class="field">Papilddarbs<input id="extraWork_${o.id}" placeholder="Piem., izvilkšana" value="${o.extra_work||''}"></label><label class="field">Piemaksa vadītājam par papilddarbu, €<input id="extraPay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.extra_work_amount||0).toFixed(2)}"></label><label class="field">Piezīme par samaksu<textarea id="payComment_${o.id}">${o.customer_payment_comment||''}</textarea></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>');
+if(raSeq!==raTestViewSeq)return;raSetMobileHTML(document.getElementById('driverOrders'),data.map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'} <span class="muted">(${o.transport_type==='van'?'Buss':'Vieglais auto'})</span></h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${Number(o.price||0).toFixed(2)}</b></p><p>Mūsu daļa: <b>€${Number(o.our_share||0).toFixed(2)}</b>${o.clients?.payment_type==='partner' ? ` · Adakam: <b>€${Number(o.partner_debt||0).toFixed(2)}</b>` : ''}</p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new' ? (currentVehicleWorkStatus==='on_line' && currentVehicleDriverId ? `<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>` : `<div class="notice">Šī mašīna pašlaik nevar pieņemt pasūtījumu: vispirms izvēlies vadītāju šī telefona augšdaļā un pārliecinies, ka mašīna ir uz līnijas.</div>`) : ''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" min="0" max="4" step="1" value="${Number(o.tow_ins||0)}"></label><label class="field">Klienta samaksāts, €<input id="pay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.cash_received||o.price||0).toFixed(2)}"></label><label class="field">Papilddarbs<input id="extraWork_${o.id}" placeholder="Piem., izvilkšana" value="${o.extra_work||''}"></label><label class="field">Piemaksa vadītājam par papilddarbu, €<input id="extraPay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.extra_work_amount||0).toFixed(2)}"></label><label class="field">Piezīme par samaksu<textarea id="payComment_${o.id}">${o.customer_payment_comment||''}</textarea></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>');
 }
 
 /* Naudas lauki: Adak redz faktiskās samaksas un mūsu daļas laukus; pārējiem klientiem tikai cenu. */
@@ -2092,8 +1925,8 @@ box.innerHTML=vehicles.map(vv=>{const current=drivers.find(d=>Number(d.id)===Num
 }
 async function saveVehicleWork(id){
 const out=document.getElementById('vehicleWorkMsg'),de=document.getElementById('workDriver_'+id),se=document.getElementById('workStatus_'+id);if(!de||!se)return;const did=de.value?Number(de.value):null;let st=se.value;if(!did&&st==='on_line')st='no_driver';if(did&&(st==='no_driver'||st==='inactive'))st='on_line';
-let call=await db.rpc('set_vehicle_driver',{p_vehicle_id:id,p_driver_id:did,p_confirm_transfer:false});if(call.error){if(out)out.innerHTML='<div class="notice error">Neizdevās saglabāt vadītāju: '+call.error.message+'</div>';return;}let result=call.data;if(typeof result==='string'){try{result=JSON.parse(result)}catch(e){}}
-if(result?.needs_transfer){const ok=confirm(result.driver_name+' pašlaik ir uz '+result.old_vehicle_name+'.\n\nPārcelt '+result.driver_name+' uz šo mašīnu?');if(!ok){await loadVehicleWork();if(out)out.innerHTML='<div class="notice">Pārcelšana atcelta.</div>';return;}call=await db.rpc('set_vehicle_driver',{p_vehicle_id:id,p_driver_id:did,p_confirm_transfer:true});if(call.error){if(out)out.innerHTML='<div class="notice error">Neizdevās pārcelt vadītāju: '+call.error.message+'</div>';await loadVehicleWork();return;}}
+let call=await db.rpc('ra_test_set_driver',{p_vehicle_id:id,p_driver_id:did,p_confirm_transfer:false});if(call.error){if(out)out.innerHTML='<div class="notice error">Neizdevās saglabāt vadītāju: '+call.error.message+'</div>';return;}let result=call.data;if(typeof result==='string'){try{result=JSON.parse(result)}catch(e){}}
+if(result?.needs_transfer){const ok=confirm(result.driver_name+' pašlaik ir uz '+result.old_vehicle_name+'.\n\nPārcelt '+result.driver_name+' uz šo mašīnu?');if(!ok){await loadVehicleWork();if(out)out.innerHTML='<div class="notice">Pārcelšana atcelta.</div>';return;}call=await db.rpc('ra_test_set_driver',{p_vehicle_id:id,p_driver_id:did,p_confirm_transfer:true});if(call.error){if(out)out.innerHTML='<div class="notice error">Neizdevās pārcelt vadītāju: '+call.error.message+'</div>';await loadVehicleWork();return;}}
 const finalStatus=did?'on_line':st;const u=await db.from('vehicles').update({work_status:finalStatus}).eq('id',id);if(u.error){if(out)out.innerHTML='<div class="notice error">Vadītājs saglabāts, bet statusu neizdevās saglabāt: '+u.error.message+'</div>';await loadVehicleWork();return;}if(out)out.innerHTML='<div class="notice">Mašīnas un vadītāja stāvoklis saglabāts.</div>';await loadVehicleWork();await loadShiftSummary();
 }
 async function deactivateDriver(id){
@@ -2101,7 +1934,7 @@ const found=dispatcherDrivers.find(d=>Number(d.id)===Number(id));const name=foun
 if(!confirm('Atzīmēt '+name+' kā neaktīvu/atlaistu? Vecie pasūtījumi tiks saglabāti.'))return;
 const vv=await db.from('vehicles').select('id').eq('current_driver_id',id).eq('active',true);
 if(vv.error){alert(vv.error.message);return;}
-for(const vehicle of (vv.data||[])){const r=await db.rpc('set_vehicle_driver',{p_vehicle_id:vehicle.id,p_driver_id:null,p_confirm_transfer:false});if(r.error){alert('Neizdevās atbrīvot '+name+' no mašīnas: '+r.error.message);return;}}
+for(const vehicle of (vv.data||[])){const r=await db.rpc('ra_test_set_driver',{p_vehicle_id:vehicle.id,p_driver_id:null,p_confirm_transfer:false});if(r.error){alert('Neizdevās atbrīvot '+name+' no mašīnas: '+r.error.message);return;}}
 const r=await db.from('drivers').update({active:false}).eq('id',id);
 if(r.error){alert('Vadītājs no mašīnas atbrīvots, bet statusu neizdevās mainīt: '+r.error.message);return;}
 if(document.getElementById('vehicleWorkMsg'))document.getElementById('vehicleWorkMsg').innerHTML='<div class="notice">'+name+' atzīmēts kā neaktīvs. Vecie pasūtījumi saglabāti.</div>';await loadDrivers();await loadVehicleWork();await loadShiftSummary();
@@ -2608,117 +2441,34 @@ raSetMobileHTML(document.getElementById('driverOrders'),
 }
 
 /* ПРИНЯТЬ ЗАКАЗ */
-async function accept(id){
-if(sessionMode==='vehicle'){if(!currentVehicleDriverId){alert('Šai mašīnai nav norādīts pašreizējais vadītājs. Vispirms norādi vadītāju dispečera kabinetā.');return;}const r=await db.from('orders').update({status:'in_progress',driver_id:currentVehicleDriverId,vehicle_id:vehicleId,accepted_at:new Date().toISOString()}).eq('id',id).eq('status','new').or(`vehicle_id.is.null,vehicle_id.eq.${vehicleId}`).select('id,driver_id,vehicle_id,status').maybeSingle();if(r.error){alert(r.error.message);return;}if(!r.data||Number(r.data.vehicle_id)!==Number(vehicleId)){alert('Pasūtījumu jau pieņēma cita mašīna vai tas vairs nav pieejams.');await loadVehicleOrders();return;}await loadVehicleOrders();return;}
-const r=await db.from('orders').update({status:'in_progress',driver_id:driverId,accepted_at:new Date().toISOString()}).eq('id',id).eq('status','new').or(`driver_id.is.null,driver_id.eq.${driverId}`).select('id,driver_id,status').maybeSingle();if(r.error){alert(r.error.message);return;}if(!r.data||Number(r.data.driver_id)!==Number(driverId)){alert('Pasūtījumu jau pieņēma cits vadītājs vai tas vairs nav pieejams.');await loadDriverOrders();return;}await loadDriverOrders();}
-
-/* ЗАВЕРШИТЬ ЗАКАЗ */
-async function finish(id){
-  const km=Number(document.getElementById('km_'+id)?.value||0);
-  const rt=Number(document.getElementById('rt_'+id)?.value||0);
-  const actual=Number(document.getElementById('pay_'+id)?.value||0);
-  const comment=(document.getElementById('payComment_'+id)?.value||'').trim();
-  const extraWork=(document.getElementById('extraWork_'+id)?.value||'').trim();
-  const extraPay=Number(document.getElementById('extraPay_'+id)?.value||0);
-
-  if(!Number.isFinite(km)||km<0||!Number.isFinite(rt)||rt<0||!Number.isFinite(actual)||actual<0||!Number.isFinite(extraPay)||extraPay<0){
-    alert('Pārbaudi kilometrus, ratiņu skaitu, klienta samaksāto summu un papilddarba piemaksu.');
-    return;
-  }
-
-  const current=await db.from('orders').select('*').eq('id',id).maybeSingle();
-  if(current.error||!current.data){
-    alert(current.error?.message||'Pasūtījums nav atrasts.');
-    return;
-  }
-
-  const clientInfo=await db.from('clients').select('payment_type').eq('id',current.data.client_id).maybeSingle();
-  if(clientInfo.error||!clientInfo.data){
-    alert('Neizdevās noteikt klienta apmaksas veidu: '+(clientInfo.error?.message||'klients nav atrasts'));
-    return;
-  }
-
-  const paymentType=clientInfo.data.payment_type||'cash';
-  const isPartner=paymentType==='partner';
-  const isContract=paymentType!=='cash' && !isPartner;
-
-  // Klienta līgumtarifs nedrīkst bloķēt vadītāja darbu vai ietekmēt viņa algu.
-  // Ja tarifu nevar aprēķināt, saglabājam esošās cenu vērtības nemainītas.
-  let contractPrice=null;
-  if(isContract){
-    try{
-      const tariffs=await raClientTariffs(current.data.client_id);
-      contractPrice=raContractPrice({...current.data,kilometers:km,tow_ins:rt},tariffs).net;
-    }catch(e){
-      console.warn('Līgumcena nav aprēķināta pasūtījumam '+id+':',e);
-    }
-  }
-  const ourShare=isPartner ? Number(current.data.our_share||0) : (isContract?(contractPrice??Number(current.data.our_share||0)):actual);
-  const adakDebt=isPartner ? Math.max(0,actual-ourShare) : 0;
-
-  const now=new Date();
-  const dateKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  const holidays=[];
-  const day=now.getDay();
-  const weekend=day===0||day===6;
-  const holiday=holidays.includes(dateKey);
-  const hour=now.getHours();
-  const night=weekend||holiday||hour>=22||hour<7;
-  const tariff=night?'Nakts':'Diena';
-  const base=night?15:10;
-  const rate=night?.15:.10;
-  const pay=base+km*rate+rt*5+extraPay;
-
-  let q=db.from('orders').update({
-    status:'completed',
-    completed_at:now.toISOString(),
-    kilometers:km,
-    tow_ins:rt,
-    extra_work:extraWork||null,
-    extra_work_amount:extraPay,
-    driver_pay:pay,
-    ...(!isContract?{price:Number(current.data.price||0)}:contractPrice!==null?{price:contractPrice,contractual_amount:contractPrice}:{}),
-    cash_received:isContract?0:actual,
-    our_share:ourShare,
-    customer_payment_comment:comment||null,
-    partner_debt:adakDebt
-  }).eq('id',id);
-
-  if(sessionMode==='vehicle') q=q.eq('vehicle_id',vehicleId);
-  else if(sessionMode==='driver') q=q.eq('driver_id',driverId);
-  else { alert('Nav atļauts.'); return; }
-
-  const r=await q;
-  if(r.error){ alert(r.error.message); return; }
-
-  /* Adak долг создаём только для partner-заказа и только при положительной сумме. */
-  if(isPartner && adakDebt>0){
-    const debtVehicleId=Number(current.data.vehicle_id||vehicleId||0);
-    const debtDriverId=Number(current.data.driver_id||currentVehicleDriverId||driverId||0)||null;
-    const ar=await db.rpc('add_adak_order_debt',{
-      p_order_id:Number(id),
-      p_vehicle_id:debtVehicleId,
-      p_driver_id:debtDriverId,
-      p_amount:adakDebt,
-      p_note:'Parāds no pabeigta pasūtījuma'
-    });
-    if(ar.error){
-      alert('Pasūtījums pabeigts, bet Adaka parādu neizdevās pievienot: '+ar.error.message);
-    }
-  }
-
-  alert('Pasūtījums pabeigts.\n\nTarifs: '+tariff+
-        '\nVadītāja samaksa: €'+pay.toFixed(2)+
-        (extraPay>0?'\nPapilddarba piemaksa: €'+extraPay.toFixed(2):'')+
-        '\nNo klienta saņemts: €'+actual.toFixed(2));
-
-  if(sessionMode==='vehicle'){
-    await loadVehicleOrders();
-    await loadVehicleCash();
-  }else{
-    await loadDriverOrders();
-  }
+async function raCurrentDriverVehicle(){
+ if(sessionMode==='vehicle')return {vid:vehicleId,did:currentVehicleDriverId};
+ const r=await db.from('vehicles').select('id').eq('current_driver_id',driverId).eq('active',true).single();
+ if(r.error)throw Error('Vadītājam jābūt piesaistītam vienai aktīvai mašīnai');
+ return {vid:r.data.id,did:driverId};
 }
+async function accept(id){
+ try{const {vid,did}=await raCurrentDriverVehicle();await raTestRPC('ra_test_accept',{p_order_id:id,p_vehicle_id:vid,p_driver_id:did});
+ if(sessionMode==='vehicle')await loadVehicleOrders();else await loadDriverOrders();}catch(e){alert(e.message);}
+}
+async function finish(id){
+ if(raTestFinishing.has(id))return;raTestFinishing.add(id);
+ try{
+ const {vid,did}=await raCurrentDriverVehicle();
+ const km=Number(document.getElementById('km_'+id)?.value||0),tow=Number(document.getElementById('rt_'+id)?.value||0),received=Number(document.getElementById('pay_'+id)?.value||0),extra=Number(document.getElementById('extraPay_'+id)?.value||0);
+ if(![km,tow,received,extra].every(Number.isFinite))throw Error('Nederīga summa');
+ const q=await db.from('orders').select('*').eq('id',id).single();if(q.error)throw q.error;
+ const c=await db.from('clients').select('payment_type').eq('id',q.data.client_id).single();if(c.error)throw c.error;
+ let contract=null;
+ if(!['cash','partner'].includes(c.data.payment_type)){
+ try{contract=raContractPrice({...q.data,kilometers:km,tow_ins:tow},await raClientTariffs(q.data.client_id)).net;}catch(e){console.warn('Contract tariff:',e);}
+ }
+ const r=await raTestRPC('ra_test_finish',{p_order_id:id,p_vehicle_id:vid,p_driver_id:did,p_km:km,p_tow:tow,p_received:received,p_extra_work:document.getElementById('extraWork_'+id)?.value||'',p_extra_pay:extra,p_comment:document.getElementById('payComment_'+id)?.value||'',p_contract_price:contract});
+ alert('Pasūtījums pabeigts. Alga €'+raAmount(r.driver_pay)+'. ADAC €'+raAmount(r.partner_debt));
+ if(sessionMode==='vehicle')await loadVehicleOrders();else await loadDriverOrders();
+ }catch(e){alert(e.message);}finally{raTestFinishing.delete(id);}
+}
+
 
 
 /* Paroles atjaunošanas režīms pēc Supabase e-pasta saites */
