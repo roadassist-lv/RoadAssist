@@ -1687,8 +1687,12 @@ async function loadVehicleSalary(shared=null){
 /* ЗАКАЗЫ МАШИНЫ */
 async function loadVehicleOrders(){
 const raSeq=++raTestViewSeq;
-for(const id of ['vehicleCashBox','vehicleSalaryBox']){const el=document.getElementById(id);if(el)el.replaceChildren();}
-const vr=await db.from('vehicles').select('current_driver_id,work_status').eq('id',vehicleId).single();if(raSeq!==raTestViewSeq)return;if(vr.error){currentVehicleDriverId=null;throw vr.error;}if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';
+const vr=await db.from('vehicles').select('current_driver_id,work_status').eq('id',vehicleId).single();if(raSeq!==raTestViewSeq)return;
+// Preserve open menus during refresh; discard the previous driver's figures on reassignment or lookup failure.
+if(vr.error || !vr.data || String(vr.data.current_driver_id)!==String(currentVehicleDriverId)){
+  for(const id of ['vehicleCashBox','vehicleSalaryBox']){const el=document.getElementById(id);if(el)el.replaceChildren();}
+}
+if(vr.error){currentVehicleDriverId=null;throw vr.error;}if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';
 const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,cash_received,our_share,partner_debt,customer_payment_comment,transport_type,tow_ins,extra_work,extra_work_amount,clients(payment_type),drivers(id,name)').order('id',{ascending:false});if(raSeq!==raTestViewSeq)return;if(r.error){raSetMobileHTML(document.getElementById('driverHead'),'<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div><h2>Pasūtījumi</h2><div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>');raSetMobileHTML(document.getElementById('driverOrders'),'');return;}
 const available=(r.data||[]).filter(o=>{
   if(o.status==='completed') return false;
