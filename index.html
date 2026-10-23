@@ -3063,7 +3063,7 @@ function raExcelNextDay(dateText) {
     timeZoneName: 'longOffset'
   }).formatToParts(utcMidnight)
     .find(p => p.type === 'timeZoneName')
-    .value
+    .value 
     .match(/GMT([+-])(\d{2}):(\d{2})/);
 
   if (!offsetHours) throw new Error('Nevar noteikt Rīgas laika joslu.');
