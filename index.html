@@ -451,36 +451,67 @@ let vehicleRefreshTimer=null;
 let raOrdersRefreshBusy=false;
 
 
-/* Keep mobile UI state when refreshed data replaces its markup. */
+/* Update mounted mobile controls in place: polling must not navigate or detach menus. */
 function raSetMobileHTML(host, html){
-  const scrollX=window.scrollX, scrollY=window.scrollY;
-  const active=document.activeElement;
-  const focused=host.contains(active)?active.id:null;
-  const selection=focused && typeof active.selectionStart==='number'
-    ? [active.selectionStart,active.selectionEnd] : null;
-  const open=Array.from(host.querySelectorAll('details'),d=>d.open);
-  const fields=raOrdersRefreshBusy?Array.from(host.querySelectorAll('input[id],textarea[id],select[id]'),e=>({id:e.id,value:e.value,checked:e.checked})):[];
-  const next=document.createElement('div');
-  next.innerHTML=html;
-  // Keep the finance/menu containers mounted until their own data is ready.
-  if(host.id==='driverHead'){
-    for(const id of ['vehicleDriverSelfBox','vehiclePushBox','vehicleCashBox','vehicleAdakBox','vehicleSalaryBox']){
-      const old=document.getElementById(id), placeholder=next.querySelector('#'+id);
-      if(old && host.contains(old) && placeholder) placeholder.replaceWith(old);
+  if(!host)return;
+  const x=window.scrollX,y=window.scrollY;
+  const next=document.createElement('div');next.innerHTML=html;
+  const keepBoxes=new Set(['vehicleDriverSelfBox','vehiclePushBox','vehicleCashBox','vehicleAdakBox','vehicleSalaryBox']);
+  const key=n=>n.nodeType===1?(n.id || n.getAttribute('data-ra-order') || ''):'';
+  function compatible(a,b){return a.nodeType===b.nodeType && (a.nodeType!==1 || (a.tagName===b.tagName && key(a)===key(b)));}
+  function patch(parent, fresh){
+    let cursor=parent.firstChild;
+    for(const wanted of [...fresh.childNodes]){
+      let old=cursor;
+      if(key(wanted)){
+        old=[...parent.childNodes].find(n=>compatible(n,wanted));
+      }
+      if(!old || !compatible(old,wanted)){
+        parent.insertBefore(wanted.cloneNode(true),cursor);continue;
+      }
+      if(old!==cursor)parent.insertBefore(old,cursor);
+      cursor=old.nextSibling;
+      if(old.nodeType!==1){if(old.nodeValue!==wanted.nodeValue)old.nodeValue=wanted.nodeValue;continue;}
+      // The header contains placeholders; each mounted section has its own renderer.
+      if(host.id==='driverHead' && keepBoxes.has(old.id))continue;
+      const control=/^(INPUT|TEXTAREA|SELECT)$/.test(old.tagName);
+      const preserve=control && raOrdersRefreshBusy;
+      const value=old.value,checked=old.checked,top=old.scrollTop,left=old.scrollLeft;
+      for(const attr of [...old.attributes]){
+        if(old.tagName==='DETAILS' && attr.name==='open')continue;
+        if(!wanted.hasAttribute(attr.name))old.removeAttribute(attr.name);
+      }
+      for(const attr of [...wanted.attributes]){
+        if(old.tagName==='DETAILS' && attr.name==='open')continue;
+        if(old.getAttribute(attr.name)!==attr.value)old.setAttribute(attr.name,attr.value);
+      }
+      if(!(preserve && old.tagName==='TEXTAREA'))patch(old,wanted);
+      if(control){
+        const v=preserve?value:wanted.value;
+        if(old.value!==v)old.value=v;
+        if(old.tagName==='INPUT')old.checked=preserve?checked:wanted.checked;
+      }
+      old.scrollTop=top;old.scrollLeft=left;
     }
-  }else{
-    next.querySelectorAll('details').forEach((d,i)=>{if(i<open.length)d.open=open[i];});
+    while(cursor){const next=cursor.nextSibling;cursor.remove();cursor=next;}
   }
-  host.replaceChildren(...next.childNodes);
-  for(const field of fields){
-    const e=document.getElementById(field.id);
-    if(e && host.contains(e)){e.value=field.value;e.checked=field.checked;}
+  patch(host,next);
+  window.scrollTo(x,y);
+}
+function raMobileError(host,message){
+  if(!host)return;
+  let notice=host.querySelector(':scope > [data-ra-refresh-error]');
+  if(!notice){notice=document.createElement('div');notice.dataset.raRefreshError='';notice.className='notice error';notice.setAttribute('role','status');host.appendChild(notice);}
+  notice.textContent=message;
+}
+// Clear another driver's data, retaining the navigation shell but never their forms or totals.
+function raClearDriverMenus(){
+  for(const id of ['vehicleCashBox','vehicleSalaryBox']){
+    const box=document.getElementById(id);if(!box)continue;
+    const menu=box.querySelector('details');
+    if(menu){for(const child of [...menu.children])if(child.tagName!=='SUMMARY')child.remove();}
+    else box.replaceChildren();
   }
-  if(focused){
-    const e=document.getElementById(focused);
-    if(e && host.contains(e)){e.focus({preventScroll:true});if(selection)e.setSelectionRange(...selection);}
-  }
-  window.scrollTo(scrollX,scrollY);
 }
 function raMobileVisibleOrders(orders, key, id){
   const active=orders.filter(o=>o.status==='in_progress' && o[key]!=null && Number(o[key])===Number(id));
@@ -491,10 +522,6 @@ function raMobileVisibleOrders(orders, key, id){
 async function raRefreshMobileOrders(){
   if(raOrdersRefreshBusy || document.hidden || !navigator.onLine) return;
   if(sessionMode!=='driver' && sessionMode!=='vehicle') return;
-  const active=document.activeElement;
-  // Nesabojājam vadītāja ievadītos kilometrus, maksājumus un piezīmes.
-  if(active && active.closest && active.closest('#driverView') &&
-     /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
   raOrdersRefreshBusy=true;
   try{
     if(sessionMode==='vehicle') await loadVehicleOrders();
@@ -512,6 +539,7 @@ function raStartMobileRefresh(){
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden) raRefreshMobileOrders();
 });
+window.addEventListener('focus',raRefreshMobileOrders);
 window.addEventListener('online',raRefreshMobileOrders);
 window.addEventListener('pageshow',raRefreshMobileOrders);
 
@@ -1302,7 +1330,7 @@ async function loadVehicleCash(shared=null){
     <h4>Pievienot izdevumu</h4><div class="form"><label class="field">Summa, €<input id="cashExpenseAmount" type="number" min="0" step="0.01"></label><label class="field">Par ko?<input id="cashExpenseDescription" placeholder="Degviela, mazgāšana, pirkums..."></label><label class="field">Apmaksa<select id="cashExpensePaymentType"><option value="cash">Skaidra nauda</option><option value="cashless">Karte / bezskaidra</option></select></label></div>
     <button class="primary" style="margin-top:10px;width:100%" onclick="addCashExpense()">PIEVIENOT IZDEVUMU</button><div id="cashExpenseMsg" style="margin-top:8px"></div>
     <div style="margin-top:10px"><b>Šī perioda izdevumi:</b><br>${s.expenses.map(e=>`€${Number(e.amount||0).toFixed(2)} — ${(e.expense_payment_type||'cash')==='cash'?'skaidra':'karte/bezskaidra'} — ${e.description||''}`).join('<br>')||'Nav'}</div></div></details>`);
-  }catch(e){raSetMobileHTML(box,'<div class="notice error">Kasi neizdevās ielādēt: '+(e.message||e)+'</div>');}
+  }catch(e){raMobileError(box,'Kasi neizdevās ielādēt: '+(e.message||e));}
 }
 
 /* ДОЛГ АДАКУ */
@@ -1518,7 +1546,7 @@ async function loadVehicleDriverSelfSelect(){
 }
 
 async function saveVehicleSelfDriver(){
-++raTestViewSeq;for(const id of ['vehicleCashBox','vehicleSalaryBox'])document.getElementById(id)?.replaceChildren();
+++raTestViewSeq;raClearDriverMenus();
   const el=document.getElementById('vehicleSelfDriverSelect');
   const box=document.getElementById('vehicleDriverSelfContent');
   if(!el)return;
@@ -1588,7 +1616,7 @@ async function saveVehicleSelfDriver(){
 }
 
 async function clearVehicleSelfDriver(){
-++raTestViewSeq;for(const id of ['vehicleCashBox','vehicleSalaryBox'])document.getElementById(id)?.replaceChildren();
+++raTestViewSeq;raClearDriverMenus();
   const box=document.getElementById('vehicleDriverSelfContent');
   if(box)box.innerHTML='<div class="notice">Noņemu vadītāju no šīs mašīnas...</div>';
 
@@ -1623,7 +1651,7 @@ async function loadVehicleSalary(shared=null){
 
   let rows;
   try{const s=shared||await getShiftData(vehicleId);if(String(s.driver_id)!==String(currentVehicleDriverId))return;rows=s.orders;}
-  catch(e){raSetMobileHTML(host,'<div class="notice error">'+e.message+'</div>');return;}
+  catch(e){raMobileError(host,e.message);return;}
   const todayKey=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Riga'});
 
   let todayKm=0,todayPay=0,todayRt=0;
@@ -1690,10 +1718,10 @@ const raSeq=++raTestViewSeq;
 const vr=await db.from('vehicles').select('current_driver_id,work_status').eq('id',vehicleId).single();if(raSeq!==raTestViewSeq)return;
 // Preserve open menus during refresh; discard the previous driver's figures on reassignment or lookup failure.
 if(vr.error || !vr.data || String(vr.data.current_driver_id)!==String(currentVehicleDriverId)){
-  for(const id of ['vehicleCashBox','vehicleSalaryBox']){const el=document.getElementById(id);if(el)el.replaceChildren();}
+  raClearDriverMenus();
 }
 if(vr.error){currentVehicleDriverId=null;throw vr.error;}if(vr.data){currentVehicleDriverId=vr.data.current_driver_id===null?null:Number(vr.data.current_driver_id);currentVehicleWorkStatus=vr.data.work_status||'no_driver';}if(currentVehicleDriverId){const dr=await db.from('drivers').select('name').eq('id',currentVehicleDriverId).maybeSingle();currentVehicleDriverName=dr.data?.name||'';}else currentVehicleDriverName='';
-const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,cash_received,our_share,partner_debt,customer_payment_comment,transport_type,tow_ins,extra_work,extra_work_amount,clients(payment_type),drivers(id,name)').order('id',{ascending:false});if(raSeq!==raTestViewSeq)return;if(r.error){raSetMobileHTML(document.getElementById('driverHead'),'<div class="muted">🚛 '+vehicleName+' — '+vehiclePlate+'</div><h2>Pasūtījumi</h2><div class="notice error">Neizdevās ielādēt pasūtījumus: '+r.error.message+'</div>');raSetMobileHTML(document.getElementById('driverOrders'),'');return;}
+const r=await db.from('orders').select('id,car,plate,problem,wheels,neutral,steering,pickup,destination,price,status,driver_id,vehicle_id,cash_received,our_share,partner_debt,customer_payment_comment,transport_type,tow_ins,extra_work,extra_work_amount,clients(payment_type),drivers(id,name)').order('id',{ascending:false});if(raSeq!==raTestViewSeq)return;if(r.error){raMobileError(document.getElementById('driverOrders'),'Neizdevās ielādēt pasūtījumus: '+r.error.message);return;}
 const available=(r.data||[]).filter(o=>{
   if(o.status==='completed') return false;
   if(o.status==='new' && o.vehicle_id===null) return true;
@@ -1702,9 +1730,9 @@ const available=(r.data||[]).filter(o=>{
 const data=raMobileVisibleOrders(available,'vehicle_id',vehicleId);const statusText=currentVehicleWorkStatus==='on_line'?'🟢 Uz līnijas':currentVehicleWorkStatus==='service'?'🔧 Servisā':currentVehicleWorkStatus==='inactive'?'⚪ Neizmanto':'🟡 Nav vadītāja';raSetMobileHTML(document.getElementById('driverHead'),'<div class="muted">🚛 Mašīnas kabinets</div><h2>'+vehicleName+' — '+vehiclePlate+'</h2><p>Pašreizējais vadītājs: <b>'+(currentVehicleDriverName||'Nav piešķirts')+'</b></p><p>Stāvoklis: <b>'+statusText+'</b></p><p class="muted">Šis telefons ir pastāvīgi piesaistīts šim evakuatoram.</p><div id="vehicleDriverSelfBox" class="panel" style="margin-top:15px;border:2px solid #dfe4e8"><h3 style="margin-top:0">👤 Kas šodien strādā uz šīs mašīnas?</h3><p class="muted">Vadītājam nav sava sistēmas konta. Izvēlies savu vārdu uz šī evakuatora telefona.</p><div id="vehicleDriverSelfContent">Ielādē vadītājus...</div></div><div id="vehiclePushBox" class="panel" style="margin-top:15px;border:2px solid #dfe4e8"></div><div id="vehicleCashBox"></div><div id="vehicleAdakBox"></div><div id="vehicleSalaryBox"></div>');
 await loadVehicleDriverSelfSelect();
 await renderVehiclePushStatus();
-try{const shared=await getShiftData(vehicleId);if(raSeq!==raTestViewSeq)return;await loadVehicleCash(shared);await loadVehicleSalary(shared);}catch(e){for(const id of ['vehicleCashBox','vehicleSalaryBox']){const box=document.getElementById(id);if(box)box.textContent=e.message;}}
+try{const shared=await getShiftData(vehicleId);if(raSeq!==raTestViewSeq)return;await loadVehicleCash(shared);await loadVehicleSalary(shared);}catch(e){for(const id of ['vehicleCashBox','vehicleSalaryBox']){const box=document.getElementById(id);if(box)raMobileError(box,e.message);}}
 await loadVehicleAdakDebt();
-if(raSeq!==raTestViewSeq)return;raSetMobileHTML(document.getElementById('driverOrders'),data.map(o=>`<div class="panel"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'} <span class="muted">(${o.transport_type==='van'?'Buss':'Vieglais auto'})</span></h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${Number(o.price||0).toFixed(2)}</b></p><p>Mūsu daļa: <b>€${Number(o.our_share||0).toFixed(2)}</b>${o.clients?.payment_type==='partner' ? ` · Adakam: <b>€${Number(o.partner_debt||0).toFixed(2)}</b>` : ''}</p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new' ? (currentVehicleWorkStatus==='on_line' && currentVehicleDriverId ? `<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>` : `<div class="notice">Šī mašīna pašlaik nevar pieņemt pasūtījumu: vispirms izvēlies vadītāju šī telefona augšdaļā un pārliecinies, ka mašīna ir uz līnijas.</div>`) : ''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" min="0" max="4" step="1" value="${Number(o.tow_ins||0)}"></label><label class="field">Klienta samaksāts, €<input id="pay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.cash_received||o.price||0).toFixed(2)}"></label><label class="field">Papilddarbs<input id="extraWork_${o.id}" placeholder="Piem., izvilkšana" value="${o.extra_work||''}"></label><label class="field">Piemaksa vadītājam par papilddarbu, €<input id="extraPay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.extra_work_amount||0).toFixed(2)}"></label><label class="field">Piezīme par samaksu<textarea id="payComment_${o.id}">${o.customer_payment_comment||''}</textarea></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>');
+if(raSeq!==raTestViewSeq)return;raSetMobileHTML(document.getElementById('driverOrders'),data.map(o=>`<div class="panel" data-ra-order="${o.id}"><div class="muted">Pasūtījums Nr. ${o.id} · <span class="status status-${o.status}">${statusLv(o.status)}</span></div><h2>${o.car||'—'} <span class="muted">(${o.transport_type==='van'?'Buss':'Vieglais auto'})</span></h2><p><b>${o.pickup||'—'}</b><br>→ ${o.destination||'—'}</p><p>${o.problem||''}</p><p>Cena klientam: <b>€${Number(o.price||0).toFixed(2)}</b></p><p>Mūsu daļa: <b>€${Number(o.our_share||0).toFixed(2)}</b>${o.clients?.payment_type==='partner' ? ` · Adakam: <b>€${Number(o.partner_debt||0).toFixed(2)}</b>` : ''}</p><p>Vadītājs: <b>${o.drivers?.name||'Nav piešķirts'}</b></p>${o.status==='new' ? (currentVehicleWorkStatus==='on_line' && currentVehicleDriverId ? `<button class="primary" style="width:100%" onclick="accept(${o.id})">PIEŅEMT PASŪTĪJUMU</button>` : `<div class="notice">Šī mašīna pašlaik nevar pieņemt pasūtījumu: vispirms izvēlies vadītāju šī telefona augšdaļā un pārliecinies, ka mašīna ir uz līnijas.</div>`) : ''}${o.status==='in_progress'&&Number(o.vehicle_id)===Number(vehicleId)?`<label class="field">Kilometri<input id="km_${o.id}" type="number" value="0"></label><label class="field">Ratiņu skaits<input id="rt_${o.id}" type="number" min="0" max="4" step="1" value="${Number(o.tow_ins||0)}"></label><label class="field">Klienta samaksāts, €<input id="pay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.cash_received||o.price||0).toFixed(2)}"></label><label class="field">Papilddarbs<input id="extraWork_${o.id}" placeholder="Piem., izvilkšana" value="${o.extra_work||''}"></label><label class="field">Piemaksa vadītājam par papilddarbu, €<input id="extraPay_${o.id}" type="number" min="0" step="0.01" value="${Number(o.extra_work_amount||0).toFixed(2)}"></label><label class="field">Piezīme par samaksu<textarea id="payComment_${o.id}">${o.customer_payment_comment||''}</textarea></label><button class="green" style="width:100%;margin-top:12px" onclick="finish(${o.id})">PABEIGT PASŪTĪJUMU</button>`:''}</div>`).join('')||'<div class="panel">Aktīvu pasūtījumu nav.</div>');
 }
 
 /* Naudas lauki: Adak redz faktiskās samaksas un mūsu daļas laukus; pārējiem klientiem tikai cenu. */
@@ -2147,7 +2175,7 @@ async function renderVehiclePushStatus(){
   if(!box) return;
 
   if(!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)){
-    box.innerHTML='<h3 style="margin-top:0">🔔 Oповещений</h3><div class="notice error">Šajā iPhone pārlūka režīmā Push paziņojumi nav pieejami. Atver šo lietotni no iPhone sākuma ekrāna (Pievienot sākuma ekrānam) un mēģini vēlreiz.</div>';
+    raSetMobileHTML(box,'<h3 style="margin-top:0">🔔 Oповещений</h3><div class="notice error">Šajā iPhone pārlūka režīmā Push paziņojumi nav pieejami. Atver šo lietotni no iPhone sākuma ekrāna (Pievienot sākuma ekrānam) un mēģini vēlreiz.</div>');
     return;
   }
 
@@ -2162,15 +2190,15 @@ async function renderVehiclePushStatus(){
     }
 
     if(permission==='granted' && subscribed){
-      box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice">Šajā pārlūkā ir Push abonements. Lai saglabātu to sistēmā, nospied ATJAUNOT PUSH SAVIENOJUMU.</div><button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()">🔄 ATJAUNOT PUSH SAVIENOJUMU</button>';
+      raSetMobileHTML(box,'<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice">Šajā pārlūkā ir Push abonements. Lai saglabātu to sistēmā, nospied ATJAUNOT PUSH SAVIENOJUMU.</div><button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()">🔄 ATJAUNOT PUSH SAVIENOJUMU</button>');
     }else if(permission==='denied'){
-      box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice error">Paziņojumi ir bloķēti. Ieslēdz tos iPhone iestatījumos un pēc tam atgriezies šeit.</div>';
+      raSetMobileHTML(box,'<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice error">Paziņojumi ir bloķēti. Ieslēdz tos iPhone iestatījumos un pēc tam atgriezies šeit.</div>');
     }else{
-      box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice">Šim telefonam vēl nav aktīvas Push Subscription.</div><button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()">🔔 IESLĒGT OPOVĒSTĪJUMUS</button>';
+      raSetMobileHTML(box,'<h3 style="margin-top:0">🔔 Paziņojumi</h3><div class="notice">Šim telefonam vēl nav aktīvas Push Subscription.</div><button class="primary" style="width:100%;margin-top:10px" onclick="enablePushNotifications()">🔔 IESLĒGT OPOVĒSTĪJUMUS</button>');
     }
   }catch(e){
     console.warn('Push status render:',e);
-    box.innerHTML='<h3 style="margin-top:0">🔔 Paziņojumi</h3><button class="primary" style="width:100%" onclick="enablePushNotifications()">🔔 IESLĒGT OPOVĒSTĪJUMUS</button>';
+    raSetMobileHTML(box,'<h3 style="margin-top:0">🔔 Paziņojumi</h3><button class="primary" style="width:100%" onclick="enablePushNotifications()">🔔 IESLĒGT OPOVĒSTĪJUMUS</button>');
   }
   finally{ raShowPushFeedback(); }
 }
@@ -2352,7 +2380,7 @@ raSetMobileHTML(document.getElementById('driverOrders'),
 data
 .map(o=>`
 
-<div class="panel">
+<div class="panel" data-ra-order="${o.id}">
 
 <div class="muted">
 Pasūtījums Nr. ${o.id} ·
@@ -3063,7 +3091,7 @@ function raExcelNextDay(dateText) {
     timeZoneName: 'longOffset'
   }).formatToParts(utcMidnight)
     .find(p => p.type === 'timeZoneName')
-    .value 
+    .value
     .match(/GMT([+-])(\d{2}):(\d{2})/);
 
   if (!offsetHours) throw new Error('Nevar noteikt Rīgas laika joslu.');
