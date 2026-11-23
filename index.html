@@ -1992,13 +1992,16 @@ async function loadOrders(){
 
 /* DISPEČERA PASŪTĪJUMA LABOŠANA */
 async function editOrder(id){
-  const r=await db.from('orders').select('id,status,car,plate,problem,pickup,destination,price,transport_type,tow_ins,extra_work_amount').eq('id',id).maybeSingle();
+  const r=await db.from('orders').select('id,status,car,plate,problem,pickup,destination,price,transport_type,kilometers,tow_ins,extra_work_amount').eq('id',id).maybeSingle();
   if(r.error||!r.data){alert(r.error?.message||'Pasūtījums nav atrasts.');return;}
   if(r.data.status==='completed'){alert('Pabeigtu pasūtījumu labot nevar.');return;}
   const o=r.data;
   const type=prompt('Transportlīdzekļa tips: car = vieglais, van = buss',o.transport_type||'car');
   if(type===null)return;
   const price=prompt('Cena klientam, €',Number(o.price||0).toFixed(2)); if(price===null)return;
+  const kmInput=prompt('Kilometri',String(Number(o.kilometers||0))); if(kmInput===null)return;
+  const km=Number(String(kmInput).trim().replace(',','.'));
+  if(!String(kmInput).trim()||!Number.isFinite(km)||km<0||km>100000){alert('Kilometriem jābūt skaitlim no 0 līdz 100000.');return;}
   const tow=prompt('Ratiņu skaits',String(Number(o.tow_ins||0))); if(tow===null)return;
   const extra=prompt('Papildu darbi / piemaksa, €',Number(o.extra_work_amount||0).toFixed(2)); if(extra===null)return;
   const note=prompt('Izmaiņu iemesls / piezīme','');
@@ -2008,6 +2011,7 @@ async function editOrder(id){
   const u=await db.from('orders').update({
     transport_type:type==='van'?'van':'car',
     price:p,
+    kilometers:km,
     tow_ins:Math.round(tw),
     extra_work_amount:ex,
     dispatcher_edit_note:note||null
